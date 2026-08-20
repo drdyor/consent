@@ -32,6 +32,8 @@ export const clinics = mysqlTable("clinics", {
   addressLine: text("addressLine"),
   contactEmail: varchar("contactEmail", { length: 320 }),
   contactPhone: varchar("contactPhone", { length: 64 }),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).default("PL").notNull(),
+  defaultLanguage: mysqlEnum("defaultLanguage", ["pl", "en"]).default("pl").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [index("clinic_owner_idx").on(table.ownerUserId)]);
@@ -55,6 +57,8 @@ export const practitionerProfiles = mysqlTable("practitionerProfiles", {
   displayName: varchar("displayName", { length: 160 }).notNull(),
   professionalTitle: varchar("professionalTitle", { length: 160 }),
   registrationNumber: varchar("registrationNumber", { length: 100 }),
+  registrationAuthority: varchar("registrationAuthority", { length: 160 }),
+  licenseVerifiedAt: timestamp("licenseVerifiedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [
@@ -69,6 +73,11 @@ export const productSources = mysqlTable("productSources", {
   documentTitle: varchar("documentTitle", { length: 255 }).notNull(),
   documentUrl: text("documentUrl").notNull(),
   documentVersion: varchar("documentVersion", { length: 100 }),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).default("PL").notNull(),
+  language: mysqlEnum("language", ["pl", "en"]).default("pl").notNull(),
+  registryAuthority: varchar("registryAuthority", { length: 160 }),
+  registryIdentifier: varchar("registryIdentifier", { length: 160 }),
+  registryVerifiedAt: timestamp("registryVerifiedAt"),
   retrievedAt: timestamp("retrievedAt").notNull(),
   reviewStatus: mysqlEnum("reviewStatus", ["pending", "approved", "superseded"]).default("pending").notNull(),
   reviewedByUserId: int("reviewedByUserId").references(() => users.id),
@@ -84,6 +93,8 @@ export const products = mysqlTable("products", {
   manufacturer: varchar("manufacturer", { length: 160 }).notNull(),
   category: mysqlEnum("category", ["neuromodulator", "ha_filler", "biostimulator", "other"]).notNull(),
   activeIngredient: varchar("activeIngredient", { length: 255 }),
+  registryIdentifier: varchar("registryIdentifier", { length: 160 }),
+  registryStatus: mysqlEnum("registryStatus", ["unverified", "verified", "not_listed"]).default("unverified").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -93,6 +104,7 @@ export const disclosureBlocks = mysqlTable("disclosureBlocks", {
   id: int("id").autoincrement().primaryKey(),
   productId: int("productId").references(() => products.id),
   sourceId: int("sourceId").notNull().references(() => productSources.id),
+  language: mysqlEnum("language", ["pl", "en"]).default("pl").notNull(),
   scope: mysqlEnum("scope", ["product", "area"]).notNull(),
   treatmentAreaKey: varchar("treatmentAreaKey", { length: 64 }),
   kind: mysqlEnum("kind", ["contraindication", "warning", "precaution", "adverse_event"]).notNull(),
@@ -116,6 +128,8 @@ export const consentTemplates = mysqlTable("consentTemplates", {
   revision: int("revision").default(1).notNull(),
   status: mysqlEnum("status", ["draft", "active", "archived"]).default("draft").notNull(),
   isStarterTemplate: boolean("isStarterTemplate").default(false).notNull(),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).default("PL").notNull(),
+  language: mysqlEnum("language", ["pl", "en"]).default("pl").notNull(),
   sections: json("sections").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -132,8 +146,11 @@ export const consentRecords = mysqlTable("consentRecords", {
   practitionerUserId: int("practitionerUserId").notNull().references(() => users.id),
   productId: int("productId").notNull().references(() => products.id),
   sourceId: int("sourceId").notNull().references(() => productSources.id),
+  inventoryLotId: int("inventoryLotId").references(() => productInventoryLots.id),
   procedureName: varchar("procedureName", { length: 160 }).notNull(),
   treatmentAreaKey: varchar("treatmentAreaKey", { length: 64 }).notNull(),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).default("PL").notNull(),
+  language: mysqlEnum("language", ["pl", "en"]).default("pl").notNull(),
   patientFirstName: varchar("patientFirstName", { length: 120 }).notNull(),
   patientLastName: varchar("patientLastName", { length: 120 }).notNull(),
   patientEmail: varchar("patientEmail", { length: 320 }),
@@ -183,6 +200,40 @@ export const treatmentMapEntries = mysqlTable("treatmentMapEntries", {
   index("map_entry_record_idx").on(table.consentRecordId),
   index("map_entry_product_idx").on(table.productId),
 ]);
+
+export const consentPhotos = mysqlTable("consentPhotos", {
+  id: int("id").autoincrement().primaryKey(),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  kind: mysqlEnum("kind", ["before", "after", "other"]).notNull(),
+  storageKey: varchar("storageKey", { length: 500 }).notNull(),
+  photoUrl: text("photoUrl").notNull(),
+  caption: varchar("caption", { length: 500 }),
+  capturedAt: timestamp("capturedAt").notNull(),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("photo_record_idx").on(table.consentRecordId), index("photo_kind_idx").on(table.kind)]);
+
+export const treatmentCourseEntries = mysqlTable("treatmentCourseEntries", {
+  id: int("id").autoincrement().primaryKey(),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  sessionNumber: int("sessionNumber").notNull(),
+  sessionAt: timestamp("sessionAt").notNull(),
+  clinicalNote: text("clinicalNote").notNull(),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("course_record_idx").on(table.consentRecordId)]);
+
+export const productInventoryLots = mysqlTable("productInventoryLots", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  productId: int("productId").notNull().references(() => products.id),
+  lotNumber: varchar("lotNumber", { length: 128 }).notNull(),
+  expiryDate: timestamp("expiryDate").notNull(),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
+  quantityUnit: mysqlEnum("quantityUnit", ["units", "ml", "other"]).notNull(),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("inventory_clinic_idx").on(table.clinicId), index("inventory_product_lot_idx").on(table.productId, table.lotNumber)]);
 
 export const auditEvents = mysqlTable("auditEvents", {
   id: int("id").autoincrement().primaryKey(),

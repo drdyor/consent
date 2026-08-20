@@ -29,6 +29,34 @@
       "when": 1787239441508,
       "tag": "0003_thick_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1787241009784,
+      "tag": "0004_sturdy_echo",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787241566558,
+      "tag": "0005_pink_malice",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787242091628,
+      "tag": "0006_stiff_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787243341223,
+      "tag": "0007_hard_shape",
+      "breakpoints": true
     }
   ]
 }

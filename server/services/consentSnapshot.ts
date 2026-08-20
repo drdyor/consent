@@ -11,6 +11,7 @@ export function buildSignedSnapshot(input: {
   template: { name: string; revision: number; sections: unknown };
   product: unknown;
   source: unknown;
+  inventoryLot?: unknown;
   practitioner: unknown;
   clinic: unknown;
   disclosures: Disclosure[];
@@ -25,6 +26,7 @@ export function buildSignedSnapshot(input: {
     template: input.template,
     product: input.product,
     source: input.source,
+    inventoryLot: input.inventoryLot || null,
     practitioner: input.practitioner,
     clinic: input.clinic,
     disclosures: input.disclosures,

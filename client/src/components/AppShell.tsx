@@ -30,6 +30,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const workspaceQuery = trpc.workspace.overview.useQuery(undefined, { enabled: Boolean(user), retry: false });
   const isAdmin = workspaceQuery.data?.membership.role === "admin";
+  const workspaceLoading = Boolean(user) && workspaceQuery.isLoading;
+  const workspaceUnavailable = Boolean(user) && workspaceQuery.isError;
 
   const sidebar = (
     <aside className="flex h-full w-[274px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground">
@@ -44,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Link>
 
       <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-emerald-100/45">Clinical workspace</p>
-      <nav className="space-y-1">
+      {workspaceLoading ? <div className="space-y-2 px-3"><div className="h-9 animate-pulse rounded-lg bg-white/10" /><div className="h-9 animate-pulse rounded-lg bg-white/10" /><div className="h-9 animate-pulse rounded-lg bg-white/10" /></div> : workspaceUnavailable ? <div className="mx-3 rounded-xl border border-amber-200/20 bg-amber-100/10 p-3 text-xs leading-relaxed text-amber-100/80">Clinic workspace unavailable. Refresh after confirming your clinic membership.</div> : user ? <nav className="space-y-1">
         {navigation.filter(item => !item.adminOnly || isAdmin).map(item => {
           const active = item.href === "/" ? location === "/" : location.startsWith(item.href);
           const Icon = item.icon;
@@ -55,11 +57,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
-      </nav>
+      </nav> : <p className="px-3 text-xs leading-relaxed text-emerald-50/65">Sign in to access clinic records and consent tools.</p>}
 
       <div className="mt-8 border-t border-white/10 pt-7">
         <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-emerald-100/45">Practice</p>
-        {isAdmin && <Link href="/profile" onClick={() => setMobileOpen(false)} className={cn("side-link", location.startsWith("/profile") && "side-link-active")}>
+        {!workspaceLoading && !workspaceUnavailable && isAdmin && <Link href="/profile" onClick={() => setMobileOpen(false)} className={cn("side-link", location.startsWith("/profile") && "side-link-active")}>
           <Settings className="size-[17px]" strokeWidth={1.8} />
           <span className="font-medium">Clinic profile</span>
         </Link>}

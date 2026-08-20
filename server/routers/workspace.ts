@@ -26,7 +26,7 @@ export const workspaceRouter = router({
     };
   }),
   updateClinic: protectedProcedure.input(z.object({
-    name: z.string().min(2).max(160), logoUrl: z.string().url().optional().nullable(), addressLine: z.string().max(500).optional().nullable(), contactEmail: z.string().email().optional().nullable(), contactPhone: z.string().max(64).optional().nullable(),
+    name: z.string().min(2).max(160), logoUrl: z.string().url().optional().nullable(), addressLine: z.string().max(500).optional().nullable(), contactEmail: z.string().email().optional().nullable(), contactPhone: z.string().max(64).optional().nullable(), jurisdiction: z.string().min(2).max(32).default("PL"), defaultLanguage: z.enum(["pl", "en"]).default("pl"),
   })).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user);
     const db = await getDb();
@@ -35,7 +35,7 @@ export const workspaceRouter = router({
     return { success: true };
   }),
   updatePractitioner: protectedProcedure.input(z.object({
-    displayName: z.string().min(2).max(160), professionalTitle: z.string().max(160).optional().nullable(), registrationNumber: z.string().max(100).optional().nullable(),
+    displayName: z.string().min(2).max(160), professionalTitle: z.string().max(160).optional().nullable(), registrationNumber: z.string().max(100).optional().nullable(), registrationAuthority: z.string().max(160).optional().nullable(), licenseVerifiedAt: z.coerce.date().optional().nullable(),
   })).mutation(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user);
     const db = await getDb();

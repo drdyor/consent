@@ -9,28 +9,38 @@
 - [x] Build product, anatomical-area, lot-number, and expiry-date capture with dynamic disclosure assembly from stored source data.
 - [x] Build patient-facing review with section acknowledgements and typed or drawn electronic-signature capture.
 - [x] Produce a version-locked, printable signed consent snapshot containing clinic and practitioner details.
-- [ ] Build searchable consent records and audit trail filters for patient, date, procedure, product, practitioner, and signature status.
-- [ ] Add automated tests for role permissions, disclosure assembly, signing immutability, and record filters.
-- [ ] Visually verify desktop and mobile layouts, save a delivery checkpoint, and document remaining production considerations.
+- [x] Build searchable consent records and audit trail filters for patient, date, procedure, product, practitioner, and signature status.
+- [x] Add automated tests for role permissions, disclosure assembly, signing immutability, and record filters.
+- [x] Visually verify desktop and mobile layouts, save a delivery checkpoint, and document remaining production considerations.
 - [x] Make guided consent creation a minimal sequence—product, treatment area, patient details, acknowledgement, signature—without requiring clinics to manually repeat curated product-risk text.
 - [ ] Replace the initial manufacturer safety-page source records with canonical SPC, IFU, or prescribing-information documents and retain their title, version or date, URL, and retrieval timestamp.
-- [ ] Add source-level review evidence so every disclosure block can be traced to a specific approved SPC/IFU document before it is available in a patient consent.
-- [ ] Connect the sidebar, dashboard, and profile screens to protected workspace and consent data, with real loading, empty, and error states.
+- [x] Add source-level review evidence so every disclosure block can be traced to a specific approved SPC/IFU document before it is available in a patient consent.
+- [x] Connect the sidebar, dashboard, and profile screens to protected workspace and consent data, with real loading, empty, and error states.
 - [x] Implement S3-backed clinic-logo upload and retain its URL in the clinic profile and signed snapshot.
 - [x] Verify signed snapshots include the resolved clinic, practitioner, and logo details used at the moment of signing.
 - [x] Preserve the full governance, source-control, traceability, signing, records, and permission capabilities while presenting practitioners with a focused guided workflow rather than a reduced product scope.
-- [ ] Add administrator-only source and template controls, practitioner-focused form creation actions, and consistent protected-workspace loading and error states.
+- [x] Add administrator-only source and template controls, practitioner-focused form creation actions, and consistent protected-workspace loading and error states.
 - [x] Add a dedicated pending-signature list and multiple dashboard shortcuts that reflect live clinic data.
 - [x] Render the exact stored product and anatomical disclosure blocks in the assembled consent review, not only a disclosure-count summary.
 - [x] Verify the patient-facing consent carries the assembled source-linked disclosure text forward to its locked signing snapshot.
 - [x] Render the clinic logo in generated signed-consent PDF output.
-- [ ] Add a searchable audit-event trail filtered by consent record, actor, and event date.
+- [x] Add a searchable audit-event trail filtered by consent record, actor, and event date.
+- [x] Add a visible consent-record filter to the audit-event trail and bind it to the protected audit query.
+- [x] Extend audit-event filtering by patient, procedure, product, practitioner, and consent signature status, and test the query/UI wiring.
+- [x] Add protected audit-query tests for patient, procedure, product, practitioner, and signature-status filtering.
+- [x] Add a rendered audit-filter component test that verifies the expanded UI controls emit the complete query input.
+- [x] Verify that each expanded audit filter contributes to the protected query’s condition set and that the rendered audit controls expose the full filter set.
+- [x] Add interaction-level test coverage for each audit control’s emitted state and each protected audit filter’s query behavior.
 - [ ] Reconcile Poland-first product scope and governing-market assumptions with verified current regulatory sources before relying on jurisdiction-specific consent content.
-- [ ] Add jurisdiction, language, product-registry, prescriber-license, and regulatory-evidence fields to the compliance data model.
-- [ ] Add Polish-first and bilingual Polish/English consent output with jurisdiction-specific template governance.
-- [ ] Add UMKiL-compatible product registration evidence and block patient-ready consent use when required approval evidence is absent.
-- [ ] Add anatomical injection-map, before/after photo, treatment-course, and per-product inventory-traceability workflows.
-- [ ] Evaluate and plan the required migration from hosted web storage to a clinic-controlled local-first desktop deployment before asserting local-storage or UODO/GDPR positioning.
+- [x] Add jurisdiction, language, product-registry, prescriber-license, and regulatory-evidence fields to the compliance data model.
+- [x] Add Polish-first and bilingual Polish/English consent output with jurisdiction-specific template governance.
+- [x] Add UMKiL-compatible product registration evidence and block patient-ready consent use when required approval evidence is absent.
+- [x] Add anatomical injection-map, before/after photo, treatment-course, and per-product inventory-traceability workflows.
+- [x] Evaluate and plan the required migration from hosted web storage to a clinic-controlled local-first desktop deployment before asserting local-storage or UODO/GDPR positioning.
+- [x] Define Poland-aware web privacy, hosting, and data-processing controls without representing the current hosted application as local-first desktop software.
+- [x] Document the hosted-web versus local-first deployment decision, associated privacy/data-processing controls, and remaining clinic governance responsibilities in project documentation.
+- [x] Add a phased hosted-web-to-local-first migration assessment covering records, signatures, storage references, authentication, backups, audit evidence, blockers, and non-goals.
+- [x] Verify protected-workspace loading, empty, and error states across the dashboard, templates, consent creator, records, and profile screens.
 - [x] Add an interactive facial treatment map for documenting treatment areas, injection points, product, units or volume, lot, expiry, practitioner, and clinical notes.
 - [x] Persist treatment-map entries per consent and include the treatment map in signed records, audit events, and PDF output.
 - [x] Show the bound practitioner identity and product expiry in the facial treatment-map workspace, and test treatment-map documentation completeness.
@@ -38,3 +48,16 @@
 - [x] Test treatment-map retention of product, quantity and measure, lot, expiry, practitioner, and clinical note data.
 - [x] Add a signing-route integration test that proves the database treatment-map payload is assembled and locked with its product, lot, expiry, practitioner, quantity, and clinical note context.
 - [x] Verify that the treatment-map view’s product, lot, expiry, and practitioner context matches the same consent’s locked signed-record context.
+- [x] Add a visible inventory-lot register, allow consent creation to select a recorded lot, and test inventory creation/retrieval and selected-lot traceability.
+- [x] Persist the selected inventory-lot reference on consent records, include it in locked snapshots, and display it in review/record views.
+- [x] Add an end-to-end test for selected inventory-lot linkage from consent creation through the locked snapshot.
+- [x] Add a mixed-disclosure integration test proving product and anatomy filtering returns only applicable source blocks.
+- [x] Add a top-level protected loading state to Templates and verify sidebar workspace-state handling.
+- [x] Extend Polish/English language handling to signed PDF export and jurisdiction-specific template governance.
+- [x] Complete Polish localization for remaining patient-facing status, disclosure, fallback, and treatment-map wording.
+- [x] Add explicit governed-template, source-record, and disclosure empty states to Templates and CreateConsent.
+- [x] Add language-aware governance for product sources and disclosure content across consent creation, patient review, signing, and PDF output.
+- [x] Add missing protected subquery loading/error states for dashboard pending signatures and records audit activity.
+- [x] Localize the remaining signed-PDF signer-method and treatment-map measure values for Polish consent output.
+- [x] Add regression coverage for Polish-governed consent/PDF output values and language-matched source blocks.
+- [x] Test the signed-PDF export path with Polish signer-method and treatment-map measure labels.
