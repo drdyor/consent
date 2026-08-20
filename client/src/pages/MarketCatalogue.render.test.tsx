@@ -7,7 +7,16 @@ const state = vi.hoisted(() => ({
   summary: { total: 1, curationReady: 0, restricted: 1, evidenceIncomplete: 0 },
 }));
 
-vi.mock("@/lib/trpc", () => ({ trpc: { marketCatalogue: { list: { useQuery: () => ({ data: state.records, isLoading: false, error: null }) }, summary: { useQuery: () => ({ data: state.summary, isLoading: false, error: null }) } } } }));
+vi.mock("@/lib/trpc", () => ({
+  trpc: {
+    marketCatalogue: {
+      list: { useQuery: () => ({ data: state.records, isLoading: false, error: null }) },
+      summary: { useQuery: () => ({ data: state.summary, isLoading: false, error: null }) },
+    },
+    workspace: { overview: { useQuery: () => ({ data: { membership: { role: "admin" } } }) } },
+  },
+}));
+vi.mock("@/_core/hooks/useAuth", () => ({ useAuth: () => ({ isAuthenticated: true }) }));
 vi.mock("@/components/ui/button", () => ({ Button: ({ children, ...props }: any) => <button {...props}>{children}</button> }));
 vi.mock("wouter", () => ({ Link: ({ children, href }: any) => <a href={href}>{children}</a> }));
 

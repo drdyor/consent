@@ -85,3 +85,9 @@
 - [x] Record durable visual baselines for the premium catalogue and source-library surfaces outside the deploy bundle.
 - [x] Add a rendered-page regression test for the premium EU catalogue beyond visual class contracts.
 - [x] Add checked-in baseline artifacts for the premium catalogue, source register, and inventory ledger visual states.
+- [x] Add authorised-distributor evidence, UDI/CE evidence, and supplier-diligence review fields to the EU market catalogue.
+- [x] Build a restricted administrator promotion workflow from a curation-ready catalogue record into a pending clinic source and product record.
+- [x] Ensure catalogue promotion preserves canonical-source, registry, language, disclosure, and administrator-approval gates before patient-ready use.
+- [x] Implement a read-only, exportable source-audit report for compliance review with per-disclosure eligibility evidence.
+- [x] Add governance, promotion, and report-export test coverage and visual validation.
+- [x] Keep products created by catalogue promotion inactive until the linked source receives final clinic approval.

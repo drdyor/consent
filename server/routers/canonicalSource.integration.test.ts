@@ -54,4 +54,45 @@ describe("canonical source approval gate", () => {
       }],
     });
   });
+
+  it("blocks promotion of a restricted catalogue record before it can create a clinic source", async () => {
+    const query: any = { from: () => query, where: () => query, limit: async () => [{ id: 21, researchStatus: "restricted", productClassification: "medicinal_product" }] };
+    state.db = { select: vi.fn(() => query) };
+
+    await expect(appRouter.createCaller(ctx as any).catalog.promoteCatalogueRecord({
+      catalogueProductId: 21,
+      language: "pl",
+      documentTitle: "Canonical document",
+      documentUrl: "https://example.test/canonical.pdf",
+      documentVersion: "2026-01",
+      documentKind: "spc",
+      disclosures: [{ scope: "product", kind: "warning", title: "Reviewed warning", body: "Reviewed canonical warning text.", requiredAcknowledgement: true }],
+    })).rejects.toThrow("Only curation-ready catalogue records");
+  });
+
+  it("creates an inactive product under a pending source when a curation-ready record is promoted", async () => {
+    const catalogue = { id: 31, researchStatus: "curation_ready", productClassification: "medicinal_product", authorisedDistributorName: "Example Distributor", authorisedDistributorUrl: "https://example.test/distributor", authorisedDistributorEvidenceUrl: "https://example.test/evidence", distributorVerifiedAt: new Date(), distributorVerificationNote: "Administrator reviewed the distributor relationship and product presentation evidence.", manufacturer: "Example Manufacturer", brandName: "Example Brand", category: "biostimulator" };
+    const selectQuery: any = { from: () => selectQuery, where: () => selectQuery, limit: async () => [catalogue] };
+    const sourceValues = vi.fn(() => ({ $returningId: async () => [{ id: 91 }] }));
+    const productValues = vi.fn(() => ({ $returningId: async () => [{ id: 92 }] }));
+    state.db = {
+      select: vi.fn(() => selectQuery),
+      insert: vi.fn()
+        .mockImplementationOnce(() => ({ values: sourceValues }))
+        .mockImplementationOnce(() => ({ values: productValues }))
+        .mockImplementationOnce(() => ({ values: async () => undefined }))
+        .mockImplementationOnce(() => ({ values: async () => undefined })),
+    };
+
+    await expect(appRouter.createCaller(ctx as any).catalog.promoteCatalogueRecord({
+      catalogueProductId: 31,
+      language: "pl",
+      documentTitle: "Canonical document",
+      documentUrl: "https://example.test/canonical.pdf",
+      documentVersion: "2026-01",
+      documentKind: "spc",
+      disclosures: [{ scope: "product", kind: "warning", title: "Reviewed warning", body: "Reviewed canonical warning text.", requiredAcknowledgement: true }],
+    })).resolves.toEqual({ sourceId: 91, productId: 92, reviewStatus: "pending" });
+    expect(productValues).toHaveBeenCalledWith(expect.objectContaining({ isActive: false, sourceId: 91 }));
+  });
 });
