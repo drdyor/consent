@@ -1,0 +1,38 @@
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { trpc } from "@/lib/trpc";
+import { BookOpenCheck, CheckCircle2, ExternalLink, FilePlus2, ShieldAlert } from "lucide-react";
+import { SourceImportForm } from "../components/SourceImportForm";
+import { useState } from "react";
+import { toast } from "sonner";
+
+export default function Templates() {
+  const { isAuthenticated } = useAuth();
+  const utils = trpc.useUtils();
+  const workspace = trpc.workspace.overview.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const templates = trpc.catalog.templates.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const sources = trpc.catalog.sources.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const [showCreate, setShowCreate] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+  const [name, setName] = useState("");
+  const [procedureKey, setProcedureKey] = useState("");
+  const [body, setBody] = useState("Please review the planned treatment and ask your practitioner any questions before signing.");
+  const isAdmin = workspace.data?.membership.role === "admin";
+  const create = trpc.catalog.createTemplate.useMutation({ onSuccess: () => { toast.success("Clinic template created"); setShowCreate(false); setName(""); setProcedureKey(""); utils.catalog.templates.invalidate(); }, onError: error => toast.error(error.message) });
+  const approve = trpc.catalog.approveSource.useMutation({ onSuccess: () => { toast.success("Source approved for patient-ready consents"); utils.catalog.sources.invalidate(); }, onError: error => toast.error(error.message) });
+
+  if (!isAuthenticated) return <main className="workspace-page"><div className="clinical-panel p-8"><h1 className="serif text-4xl text-[#24453e]">Sign in to manage consent templates.</h1><p className="mt-3 text-sm text-muted-foreground">Templates and source documents are governed at clinic level.</p></div></main>;
+
+  return <main className="workspace-page">
+    <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="metric-label">Clinic governance</p><h1 className="serif mt-1 text-4xl font-semibold text-[#24453e]">Templates & source library</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">Start with a clinical structure, customise it for your clinic, and pair it only with an approved product information source.</p></div>{isAdmin && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setShowSource(!showSource)}>Register product source</Button><Button onClick={() => setShowCreate(!showCreate)} className="bg-[#24453e] text-white hover:bg-[#19362f]"><FilePlus2 className="mr-2 size-4" />New clinic template</Button></div>}</div>
+
+    {showCreate && <section className="clinical-panel mt-7 p-6"><div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-[#e9e1d3] text-[#24453e]"><FilePlus2 className="size-5" /></div><div><h2 className="font-semibold text-[#24453e]">Create clinic template</h2><p className="text-xs text-muted-foreground">Your own reusable consent structure, governed by your administrator.</p></div></div><div className="mt-6 grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Template name</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Advanced filler consent" className="h-11 rounded-xl" /></div><div className="space-y-2"><Label>Procedure key</Label><Input value={procedureKey} onChange={e => setProcedureKey(e.target.value)} placeholder="e.g. filler-temple" className="h-11 rounded-xl" /></div><div className="space-y-2 md:col-span-2"><Label>Opening acknowledgement</Label><Textarea value={body} onChange={e => setBody(e.target.value)} className="min-h-24 rounded-xl" /></div></div><div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button><Button disabled={!name || !procedureKey || create.isPending} onClick={() => create.mutate({ name, procedureKey, description: "Clinic-created consent template", sections: [{ id: "clinic-opening", title: "Treatment acknowledgement", body, required: true }, { id: "source-disclosures", title: "Product & anatomical disclosures", body: "Source-linked disclosures are added from the selected approved product record.", required: true }, { id: "decision", title: "Patient decision", body: "Please confirm your decision after asking any questions.", required: true }] })} className="bg-[#24453e] text-white">Create template</Button></div></section>}
+    {showSource && <SourceImportForm onComplete={() => { setShowSource(false); utils.catalog.sources.invalidate(); }} />}
+
+    <div className="mt-7 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]"><section className="clinical-panel overflow-hidden"><div className="border-b border-[#eee9df] px-6 py-5"><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-[#edf1ea] text-[#2f6656]"><BookOpenCheck className="size-4" /></div><div><h2 className="font-semibold text-[#24453e]">Consent template library</h2><p className="text-xs text-muted-foreground">Editable starter structures and your clinic templates.</p></div></div></div><div className="divide-y divide-[#eee9df]">{templates.isLoading ? <div className="h-72 animate-pulse bg-[#faf9f6]" /> : templates.data?.map(template => <div key={template.id} className="flex items-center justify-between gap-4 px-6 py-4"><div><p className="text-sm font-semibold text-[#24453e]">{template.name}</p><p className="mt-1 text-xs text-muted-foreground">Revision {template.revision} · {template.isStarterTemplate ? "Starter template" : "Clinic template"}</p></div><span className="rounded-full bg-[#edf1ea] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#2f6656]">{template.status}</span></div>)}</div></section>
+      <aside className="clinical-panel overflow-hidden"><div className="border-b border-[#eee9df] px-6 py-5"><h2 className="font-semibold text-[#24453e]">Product source records</h2><p className="mt-0.5 text-xs text-muted-foreground">A source must be approved before it can reach a patient form.</p></div><div className="divide-y divide-[#eee9df]">{sources.data?.map(({ product, source }) => <div key={source.id} className="p-5"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#24453e]">{product.name}</p><p className="mt-1 text-xs text-muted-foreground">{source.documentTitle}</p></div>{source.reviewStatus === "approved" ? <CheckCircle2 className="size-5 text-[#2f6656]" /> : <ShieldAlert className="size-5 text-[#9b7031]" />}</div><a href={source.documentUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#2f6656] hover:underline">Source document · {source.documentVersion || "Version not recorded"}<ExternalLink className="size-3" /></a><div className="mt-4">{source.reviewStatus === "approved" ? <span className="rounded-full bg-[#edf1ea] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#2f6656]">Approved</span> : isAdmin ? <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate({ sourceId: source.id })} className="bg-[#24453e] text-white">Approve for clinic use</Button> : <span className="text-xs text-[#8a6b34]">Awaiting administrator approval</span>}</div></div>)}</div></aside></div>
+  </main>;
+}

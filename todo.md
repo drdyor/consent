@@ -1,0 +1,27 @@
+# Project TODO
+
+- [x] Define the consent, product-warning, anatomical-risk, patient, signature, practitioner, and audit-record data model with immutable signed snapshots.
+- [ ] Source and store product warnings only from curated manufacturer SPC/IFU references, retaining document title, source URL, version identifier, and retrieved date.
+- [x] Create role-aware clinic navigation for owner/admin and practitioner users.
+- [x] Build the premium clinic dashboard with recent-record, pending-signature, and quick-action views.
+- [x] Build clinic and practitioner profile management, including a clinic logo reference for signed-document rendering.
+- [x] Build the consent template library for the five requested aesthetic procedures.
+- [x] Build product, anatomical-area, lot-number, and expiry-date capture with dynamic disclosure assembly from stored source data.
+- [x] Build patient-facing review with section acknowledgements and typed or drawn electronic-signature capture.
+- [x] Produce a version-locked, printable signed consent snapshot containing clinic and practitioner details.
+- [ ] Build searchable consent records and audit trail filters for patient, date, procedure, product, practitioner, and signature status.
+- [ ] Add automated tests for role permissions, disclosure assembly, signing immutability, and record filters.
+- [ ] Visually verify desktop and mobile layouts, save a delivery checkpoint, and document remaining production considerations.
+- [x] Make guided consent creation a minimal sequence—product, treatment area, patient details, acknowledgement, signature—without requiring clinics to manually repeat curated product-risk text.
+- [ ] Replace the initial manufacturer safety-page source records with canonical SPC, IFU, or prescribing-information documents and retain their title, version or date, URL, and retrieval timestamp.
+- [ ] Add source-level review evidence so every disclosure block can be traced to a specific approved SPC/IFU document before it is available in a patient consent.
+- [ ] Connect the sidebar, dashboard, and profile screens to protected workspace and consent data, with real loading, empty, and error states.
+- [x] Implement S3-backed clinic-logo upload and retain its URL in the clinic profile and signed snapshot.
+- [x] Verify signed snapshots include the resolved clinic, practitioner, and logo details used at the moment of signing.
+- [x] Preserve the full governance, source-control, traceability, signing, records, and permission capabilities while presenting practitioners with a focused guided workflow rather than a reduced product scope.
+- [ ] Add administrator-only source and template controls, practitioner-focused form creation actions, and consistent protected-workspace loading and error states.
+- [x] Add a dedicated pending-signature list and multiple dashboard shortcuts that reflect live clinic data.
+- [x] Render the exact stored product and anatomical disclosure blocks in the assembled consent review, not only a disclosure-count summary.
+- [x] Verify the patient-facing consent carries the assembled source-linked disclosure text forward to its locked signing snapshot.
+- [x] Render the clinic logo in generated signed-consent PDF output.
+- [ ] Add a searchable audit-event trail filtered by consent record, actor, and event date.
