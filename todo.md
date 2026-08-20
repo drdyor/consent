@@ -1,7 +1,7 @@
 # Project TODO
 
 - [x] Define the consent, product-warning, anatomical-risk, patient, signature, practitioner, and audit-record data model with immutable signed snapshots.
-- [ ] Source and store product warnings only from curated manufacturer SPC/IFU references, retaining document title, source URL, version identifier, and retrieved date.
+- [x] Source and store product warnings only from curated manufacturer SPC/IFU references, retaining document title, source URL, version identifier, and retrieved date.
 - [x] Create role-aware clinic navigation for owner/admin and practitioner users.
 - [x] Build the premium clinic dashboard with recent-record, pending-signature, and quick-action views.
 - [x] Build clinic and practitioner profile management, including a clinic logo reference for signed-document rendering.
@@ -31,7 +31,7 @@
 - [x] Add a rendered audit-filter component test that verifies the expanded UI controls emit the complete query input.
 - [x] Verify that each expanded audit filter contributes to the protected query’s condition set and that the rendered audit controls expose the full filter set.
 - [x] Add interaction-level test coverage for each audit control’s emitted state and each protected audit filter’s query behavior.
-- [ ] Reconcile Poland-first product scope and governing-market assumptions with verified current regulatory sources before relying on jurisdiction-specific consent content.
+- [x] Reconcile Poland-first product scope and governing-market assumptions with verified current regulatory sources before relying on jurisdiction-specific consent content.
 - [x] Add jurisdiction, language, product-registry, prescriber-license, and regulatory-evidence fields to the compliance data model.
 - [x] Add Polish-first and bilingual Polish/English consent output with jurisdiction-specific template governance.
 - [x] Add UMKiL-compatible product registration evidence and block patient-ready consent use when required approval evidence is absent.
@@ -64,10 +64,14 @@
 - [x] Recreate curated disclosure blocks from verified canonical Polish SPC/IFU excerpts while retaining the administrator approval and registry-verification gate.
 - [x] Record and verify an explicit retrieval timestamp for each replaced canonical source record.
 - [x] Expand the documented Poland-market reconciliation across the clinic’s intended product scope beyond the Botox seed record.
-- [ ] Enforce canonical document type and administrator verification before a product source can be approved for patient-ready use.
-- [ ] Extend Poland-market reconciliation to each planned product category: neuromodulators, HA fillers, biostimulators, and other injectable devices.
-- [ ] Record a named administrator verification note and user reference on every canonical source before approval.
-- [ ] Audit every stored disclosure block for a canonical approved source reference before production reliance.
+- [x] Enforce canonical document type and administrator verification before a product source can be approved for patient-ready use.
+- [x] Extend Poland-market reconciliation to each planned product category: neuromodulators, HA fillers, biostimulators, and other injectable devices.
+- [x] Record a named administrator verification note and user reference on every canonical source before approval.
+- [x] Audit every stored disclosure block for a canonical approved source reference before production reliance.
+- [x] Require a human-entered administrator attestation note in the source-library verification control before canonical-source verification is recorded.
+- [x] Add a governed source-audit endpoint and test that reports every disclosure block’s canonical, registry, and approval eligibility without enabling pending sources.
+- [x] Return individual disclosure-block audit rows with canonical, registry, and patient-ready eligibility state.
+- [x] Add per-disclosure regression coverage proving pending source blocks remain non-eligible for patient-ready consent use.
 - [x] Define the EU product-catalogue scope, product classes, evidence hierarchy, and exclusions for consent and future distribution research.
 - [x] Research representative high-visibility EU aesthetic products, including Lemon Bottle, using official manufacturer and regulator evidence rather than marketplace claims.
 - [x] Capture an auditable catalogue record for each researched product: classification, jurisdiction, language, canonical evidence, identifier, source status, and distribution-readiness gaps.

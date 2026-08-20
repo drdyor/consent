@@ -43,7 +43,7 @@ export const catalogRouter = router({
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "source.approved", entityType: "productSource", entityId: String(input.sourceId), summary: "Product source approved for patient-ready consent use" });
     return { success: true };
   }),
-  verifyCanonicalSource: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), note: z.string().min(10).max(1000).default("Administrator confirmed the canonical document, language, version/date, and exact source excerpts.") })).mutation(async ({ ctx, input }) => {
+  verifyCanonicalSource: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), note: z.string().min(30).max(1000) })).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
@@ -91,5 +91,35 @@ export const catalogRouter = router({
     if (!db) throw new Error("Database unavailable");
     const blocks = await db.select().from(disclosureBlocks).where(and(eq(disclosureBlocks.productId, input.productId), eq(disclosureBlocks.language, input.language), or(eq(disclosureBlocks.scope, "product"), and(eq(disclosureBlocks.scope, "area"), eq(disclosureBlocks.treatmentAreaKey, input.treatmentAreaKey)))));
     return blocks.filter(block => block.productId === input.productId && block.language === input.language && (block.scope === "product" || (block.scope === "area" && block.treatmentAreaKey === input.treatmentAreaKey)));
+  }),
+  sourceAudit: protectedProcedure.query(async ({ ctx }) => {
+    await requireAdmin(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const records = await db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id));
+    const blocks = await db.select({ sourceId: disclosureBlocks.sourceId, id: disclosureBlocks.id }).from(disclosureBlocks);
+    const sources = records.map(({ product, source }) => {
+      const disclosureCount = blocks.filter(block => block.sourceId === source.id).length;
+      const canonicalReady = Boolean(source.canonicalVerifiedAt && source.canonicalVerifiedByUserId && source.canonicalVerificationNote);
+      const registryReady = source.jurisdiction !== "PL" || product.registryStatus === "verified";
+      const eligibleForApproval = canonicalReady && registryReady && disclosureCount > 0;
+      return { sourceId: source.id, productId: product.id, productName: product.name, documentKind: source.documentKind, reviewStatus: source.reviewStatus, disclosureCount, canonicalReady, registryReady, eligibleForApproval };
+    });
+    const disclosureBlockAudits = records.flatMap(({ product, source }) => {
+      const canonicalReady = Boolean(source.canonicalVerifiedAt && source.canonicalVerifiedByUserId && source.canonicalVerificationNote);
+      const registryReady = source.jurisdiction !== "PL" || product.registryStatus === "verified";
+      return blocks.filter(block => block.sourceId === source.id).map(block => ({
+        disclosureBlockId: block.id,
+        sourceId: source.id,
+        productId: product.id,
+        productName: product.name,
+        canonicalReady,
+        registryReady,
+        sourceReviewStatus: source.reviewStatus,
+        eligibleForApproval: canonicalReady && registryReady,
+        patientReady: source.reviewStatus === "approved" && canonicalReady && registryReady,
+      }));
+    });
+    return { sources, disclosureBlockAudits };
   }),
 });

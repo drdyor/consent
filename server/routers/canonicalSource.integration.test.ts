@@ -15,4 +15,43 @@ describe("canonical source approval gate", () => {
 
     await expect(appRouter.createCaller(ctx as any).catalog.approveSource({ sourceId: 8 })).rejects.toThrow("verify and attest to the canonical SPC, IFU, PI, or DFU document");
   });
+
+  it("requires an explicit administrator attestation rather than accepting a default verification note", async () => {
+    await expect(appRouter.createCaller(ctx as any).catalog.verifyCanonicalSource({ sourceId: 8, note: "Too brief" })).rejects.toThrow();
+  });
+
+  it("audits disclosure eligibility without making a pending source patient-ready", async () => {
+    const source = { id: 8, jurisdiction: "PL", documentKind: "spc", reviewStatus: "pending", canonicalVerifiedAt: null, canonicalVerifiedByUserId: null, canonicalVerificationNote: null };
+    const product = { id: 7, name: "Example Product", registryStatus: "verified" };
+    state.db = {
+      select: vi.fn()
+        .mockImplementationOnce(() => ({ from: () => ({ innerJoin: async () => [{ product, source }] }) }))
+        .mockImplementationOnce(() => ({ from: async () => [{ id: 4, sourceId: 8 }] })),
+    };
+
+    await expect(appRouter.createCaller(ctx as any).catalog.sourceAudit()).resolves.toEqual({
+      sources: [{
+        sourceId: 8,
+        productId: 7,
+        productName: "Example Product",
+        documentKind: "spc",
+        reviewStatus: "pending",
+        disclosureCount: 1,
+        canonicalReady: false,
+        registryReady: true,
+        eligibleForApproval: false,
+      }],
+      disclosureBlockAudits: [{
+        disclosureBlockId: 4,
+        sourceId: 8,
+        productId: 7,
+        productName: "Example Product",
+        canonicalReady: false,
+        registryReady: true,
+        sourceReviewStatus: "pending",
+        eligibleForApproval: false,
+        patientReady: false,
+      }],
+    });
+  });
 });
