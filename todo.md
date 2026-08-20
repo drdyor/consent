@@ -91,3 +91,13 @@
 - [x] Implement a read-only, exportable source-audit report for compliance review with per-disclosure eligibility evidence.
 - [x] Add governance, promotion, and report-export test coverage and visual validation.
 - [x] Keep products created by catalogue promotion inactive until the linked source receives final clinic approval.
+- [x] Add secure, administrator-only uploads for distributor authorisations and CE certificates linked to supplier evidence records.
+- [x] Add evidence expiry dates, reminder thresholds, delivery status, and auditable reminder records for certificates, IFUs, and distributor appointments.
+- [x] Implement a durable daily automated evidence-expiry scan with idempotent reminder handling.
+- [x] Add disabled-by-default external reminder-delivery settings and recipient controls without requiring credentials for the in-app reminder workflow.
+- [x] Add supplier purchase orders and reconcile each received order to clinic inventory lots and their source products.
+- [x] Build a premium reconciliation dashboard for supplier, purchase-order, product, lot, quantity, and mismatch states.
+- [x] Validate upload access control, expiry reminder processing, order-to-lot reconciliation, and responsive views.
+- [x] Add per-document reminder threshold and reminder-status metadata, capture it at upload, and apply it in the expiry scan.
+- [x] Add a received and partially-received purchase-order workflow with explicit received-line reconciliation.
+- [x] Persist line-level matched, unmatched, and mismatch status with reconciliation notes, and surface those durable states in the dashboard.

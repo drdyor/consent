@@ -105,6 +105,48 @@ export const marketCatalogueProducts = mysqlTable("marketCatalogueProducts", {
   index("market_catalogue_status_idx").on(table.researchStatus, table.distributionStatus),
 ]);
 
+export const supplierEvidenceDocuments = mysqlTable("supplierEvidenceDocuments", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  marketCatalogueProductId: int("marketCatalogueProductId").notNull().references(() => marketCatalogueProducts.id),
+  documentType: mysqlEnum("documentType", ["distributor_authorisation", "ce_certificate", "ifu", "distributor_appointment"]).notNull(),
+  storageKey: varchar("storageKey", { length: 500 }).notNull(),
+  documentUrl: text("documentUrl").notNull(),
+  originalFilename: varchar("originalFilename", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 120 }).notNull(),
+  expiresAt: timestamp("expiresAt"),
+  reminderThresholdDays: int("reminderThresholdDays").default(60).notNull(),
+  reminderStatus: mysqlEnum("reminderStatus", ["not_due", "in_app_open", "acknowledged", "overdue"]).default("not_due").notNull(),
+  lastReminderSentAt: timestamp("lastReminderSentAt"),
+  reviewNote: text("reviewNote"),
+  uploadedByUserId: int("uploadedByUserId").notNull().references(() => users.id),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("supplier_evidence_clinic_idx").on(table.clinicId), index("supplier_evidence_catalogue_idx").on(table.marketCatalogueProductId), index("supplier_evidence_expiry_idx").on(table.expiresAt)]);
+
+export const supplierReminderSettings = mysqlTable("supplierReminderSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  reminderDays: int("reminderDays").default(60).notNull(),
+  externalDeliveryEnabled: boolean("externalDeliveryEnabled").default(false).notNull(),
+  deliveryChannel: mysqlEnum("deliveryChannel", ["none", "email", "webhook"]).default("none").notNull(),
+  recipient: varchar("recipient", { length: 320 }),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("supplier_reminder_clinic_unique").on(table.clinicId), index("supplier_reminder_schedule_idx").on(table.scheduleCronTaskUid)]);
+
+export const supplierEvidenceReminders = mysqlTable("supplierEvidenceReminders", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  supplierEvidenceDocumentId: int("supplierEvidenceDocumentId").notNull().references(() => supplierEvidenceDocuments.id),
+  alertDate: timestamp("alertDate").notNull(),
+  status: mysqlEnum("status", ["in_app_open", "acknowledged", "external_pending", "external_unconfigured"]).default("in_app_open").notNull(),
+  externalDeliveryAttemptedAt: timestamp("externalDeliveryAttemptedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+}, table => [uniqueIndex("supplier_reminder_document_alert_unique").on(table.supplierEvidenceDocumentId, table.alertDate), index("supplier_reminder_clinic_status_idx").on(table.clinicId, table.status)]);
+
 export const productSources = mysqlTable("productSources", {
   id: int("id").autoincrement().primaryKey(),
   marketCatalogueProductId: int("marketCatalogueProductId").references(() => marketCatalogueProducts.id),
@@ -269,6 +311,35 @@ export const treatmentCourseEntries = mysqlTable("treatmentCourseEntries", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("course_record_idx").on(table.consentRecordId)]);
 
+export const supplierPurchaseOrders = mysqlTable("supplierPurchaseOrders", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  marketCatalogueProductId: int("marketCatalogueProductId").references(() => marketCatalogueProducts.id),
+  supplierName: varchar("supplierName", { length: 200 }).notNull(),
+  purchaseOrderNumber: varchar("purchaseOrderNumber", { length: 120 }).notNull(),
+  status: mysqlEnum("status", ["ordered", "partially_received", "received", "cancelled"]).default("ordered").notNull(),
+  orderedAt: timestamp("orderedAt").notNull(),
+  receivedAt: timestamp("receivedAt"),
+  externalReference: varchar("externalReference", { length: 160 }),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("purchase_order_clinic_number_unique").on(table.clinicId, table.purchaseOrderNumber), index("purchase_order_clinic_status_idx").on(table.clinicId, table.status)]);
+
+export const supplierPurchaseOrderLines = mysqlTable("supplierPurchaseOrderLines", {
+  id: int("id").autoincrement().primaryKey(),
+  purchaseOrderId: int("purchaseOrderId").notNull().references(() => supplierPurchaseOrders.id),
+  productId: int("productId").notNull().references(() => products.id),
+  expectedQuantity: decimal("expectedQuantity", { precision: 10, scale: 2 }).notNull(),
+  quantityUnit: mysqlEnum("quantityUnit", ["units", "ml", "other"]).notNull(),
+  expectedLotNumber: varchar("expectedLotNumber", { length: 128 }),
+  receivedQuantity: decimal("receivedQuantity", { precision: 10, scale: 2 }),
+  reconciliationStatus: mysqlEnum("reconciliationStatus", ["unmatched", "matched", "mismatch"]).default("unmatched").notNull(),
+  reconciliationNote: text("reconciliationNote"),
+  reconciledAt: timestamp("reconciledAt"),
+  reconciledByUserId: int("reconciledByUserId").references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("purchase_line_order_idx").on(table.purchaseOrderId), index("purchase_line_product_idx").on(table.productId)]);
+
 export const productInventoryLots = mysqlTable("productInventoryLots", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),
@@ -277,6 +348,7 @@ export const productInventoryLots = mysqlTable("productInventoryLots", {
   expiryDate: timestamp("expiryDate").notNull(),
   quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   quantityUnit: mysqlEnum("quantityUnit", ["units", "ml", "other"]).notNull(),
+  purchaseOrderLineId: int("purchaseOrderLineId").references(() => supplierPurchaseOrderLines.id),
   createdByUserId: int("createdByUserId").notNull().references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("inventory_clinic_idx").on(table.clinicId), index("inventory_product_lot_idx").on(table.productId, table.lotNumber)]);

@@ -9,6 +9,7 @@ import {
   ClipboardPenLine,
   FileText,
   LibraryBig,
+  PackageCheck,
   LayoutDashboard,
   Menu,
   Settings,
@@ -23,6 +24,7 @@ const navigation = [
   { label: "New consent", href: "/create", icon: ClipboardPenLine },
   { label: "Templates & sources", href: "/templates", icon: BookOpenCheck, adminOnly: true },
   { label: "EU product catalogue", href: "/catalogue", icon: LibraryBig, adminOnly: true },
+  { label: "Supplier governance", href: "/supply-governance", icon: PackageCheck, adminOnly: true },
   { label: "Records", href: "/records", icon: FileText },
 ];
 
