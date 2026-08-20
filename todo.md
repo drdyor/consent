@@ -13,7 +13,7 @@
 - [x] Add automated tests for role permissions, disclosure assembly, signing immutability, and record filters.
 - [x] Visually verify desktop and mobile layouts, save a delivery checkpoint, and document remaining production considerations.
 - [x] Make guided consent creation a minimal sequence—product, treatment area, patient details, acknowledgement, signature—without requiring clinics to manually repeat curated product-risk text.
-- [ ] Replace the initial manufacturer safety-page source records with canonical SPC, IFU, or prescribing-information documents and retain their title, version or date, URL, and retrieval timestamp.
+- [x] Replace the initial manufacturer safety-page source records with canonical SPC, IFU, or prescribing-information documents and retain their title, version or date, URL, and retrieval timestamp.
 - [x] Add source-level review evidence so every disclosure block can be traced to a specific approved SPC/IFU document before it is available in a patient consent.
 - [x] Connect the sidebar, dashboard, and profile screens to protected workspace and consent data, with real loading, empty, and error states.
 - [x] Implement S3-backed clinic-logo upload and retain its URL in the clinic profile and signed snapshot.
@@ -61,3 +61,23 @@
 - [x] Localize the remaining signed-PDF signer-method and treatment-map measure values for Polish consent output.
 - [x] Add regression coverage for Polish-governed consent/PDF output values and language-matched source blocks.
 - [x] Test the signed-PDF export path with Polish signer-method and treatment-map measure labels.
+- [x] Recreate curated disclosure blocks from verified canonical Polish SPC/IFU excerpts while retaining the administrator approval and registry-verification gate.
+- [x] Record and verify an explicit retrieval timestamp for each replaced canonical source record.
+- [x] Expand the documented Poland-market reconciliation across the clinic’s intended product scope beyond the Botox seed record.
+- [ ] Enforce canonical document type and administrator verification before a product source can be approved for patient-ready use.
+- [ ] Extend Poland-market reconciliation to each planned product category: neuromodulators, HA fillers, biostimulators, and other injectable devices.
+- [ ] Record a named administrator verification note and user reference on every canonical source before approval.
+- [ ] Audit every stored disclosure block for a canonical approved source reference before production reliance.
+- [x] Define the EU product-catalogue scope, product classes, evidence hierarchy, and exclusions for consent and future distribution research.
+- [x] Research representative high-visibility EU aesthetic products, including Lemon Bottle, using official manufacturer and regulator evidence rather than marketplace claims.
+- [x] Capture an auditable catalogue record for each researched product: classification, jurisdiction, language, canonical evidence, identifier, source status, and distribution-readiness gaps.
+- [x] Design catalogue fields and workflows that support consent sourcing now and a future supply/distribution catalogue without enabling unverified products for clinical use.
+- [x] Implement and validate the governed EU product-catalogue enhancements.
+- [x] Apply a premium, clinically appropriate glass-and-depth visual system to the catalogue and shared workspace shell without compromising accessibility or information density.
+- [x] Recompose catalogue cards, evidence states, controls, and data tables as high-trust editorial product surfaces rather than generic dashboard panels.
+- [x] Apply the premium editorial visual treatment to existing table-like source-library and inventory data surfaces so they match the catalogue’s high-trust design language.
+- [x] Add visual regression evidence for premium table treatment across catalogue and source-administration surfaces.
+- [x] Add durable visual-surface contract coverage for the premium catalogue, source register, and inventory ledger.
+- [x] Record durable visual baselines for the premium catalogue and source-library surfaces outside the deploy bundle.
+- [x] Add a rendered-page regression test for the premium EU catalogue beyond visual class contracts.
+- [x] Add checked-in baseline artifacts for the premium catalogue, source register, and inventory ledger visual states.

@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ClipboardPenLine,
   FileText,
+  LibraryBig,
   LayoutDashboard,
   Menu,
   Settings,
@@ -21,6 +22,7 @@ const navigation = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
   { label: "New consent", href: "/create", icon: ClipboardPenLine },
   { label: "Templates & sources", href: "/templates", icon: BookOpenCheck, adminOnly: true },
+  { label: "EU product catalogue", href: "/catalogue", icon: LibraryBig, adminOnly: true },
   { label: "Records", href: "/records", icon: FileText },
 ];
 
@@ -34,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const workspaceUnavailable = Boolean(user) && workspaceQuery.isError;
 
   const sidebar = (
-    <aside className="flex h-full w-[274px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground">
+    <aside className="app-sidebar flex h-full w-[274px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground">
       <Link href="/" className="flex items-center gap-3 px-3 pb-9 pt-1" onClick={() => setMobileOpen(false)}>
         <div className="grid size-10 place-items-center rounded-[0.9rem] bg-[#e0cfaa] text-[#1b3b35] shadow-[0_6px_18px_rgba(0,0,0,0.14)]">
           <ShieldCheck className="size-5" strokeWidth={1.8} />
@@ -67,8 +69,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>}
       </div>
 
-      <div className="mt-auto rounded-2xl border border-white/10 bg-white/[0.07] p-3.5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[#e0cfaa]">Source safeguard</p>
+      <div className="sidebar-provenance-card mt-auto rounded-2xl border border-white/10 bg-white/[0.07] p-3.5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[#e0cfaa]">Evidence boundary</p>
         <p className="mt-2 text-xs leading-relaxed text-emerald-50/70">Only approved SPC, PI, and IFU records can be included in a patient-ready consent.</p>
       </div>
     </aside>
@@ -84,7 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="min-w-0">
-        <header className="flex h-[76px] items-center justify-between border-b border-[#e5dfd5] bg-[#fbfaf7]/90 px-5 backdrop-blur lg:px-9">
+        <header className="app-topbar flex h-[76px] items-center justify-between border-b border-[#e5dfd5] bg-[#fbfaf7]/90 px-5 backdrop-blur lg:px-9">
           <div className="flex items-center gap-3">
             <button className="grid size-10 place-items-center rounded-xl border border-[#e5dfd5] bg-white text-[#21433d] lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu className="size-4" /></button>
             <div>

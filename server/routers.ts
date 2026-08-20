@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { catalogRouter } from "./routers/catalog";
 import { consentRouter } from "./routers/consents";
+import { marketCatalogueRouter } from "./routers/marketCatalogue";
 import { workspaceRouter } from "./routers/workspace";
 
 export const appRouter = router({
@@ -18,6 +19,7 @@ export const appRouter = router({
   }),
   workspace: workspaceRouter,
   catalog: catalogRouter,
+  marketCatalogue: marketCatalogueRouter,
   consent: consentRouter,
 });
 

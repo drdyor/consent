@@ -35,10 +35,26 @@ export const catalogRouter = router({
     const productRow = await db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id)).where(eq(productSources.id, input.sourceId)).limit(1);
     const row = productRow[0];
     if (!row) throw new Error("Product source not found");
+    if (!row.source.canonicalVerifiedAt || !row.source.canonicalVerifiedByUserId || !row.source.canonicalVerificationNote) throw new Error("An administrator must verify and attest to the canonical SPC, IFU, PI, or DFU document before source approval");
+    const sourceBlocks = await db.select({ id: disclosureBlocks.id }).from(disclosureBlocks).where(eq(disclosureBlocks.sourceId, input.sourceId)).limit(1);
+    if (!sourceBlocks.length) throw new Error("A patient-ready source must contain at least one curated canonical disclosure excerpt");
     if (row.source.jurisdiction === "PL" && row.product.registryStatus !== "verified") throw new Error("Poland-ready consent use requires verified product registry evidence before source approval");
     await db.update(productSources).set({ reviewStatus: "approved", reviewedByUserId: ctx.user.id, reviewedAt: new Date() }).where(eq(productSources.id, input.sourceId));
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "source.approved", entityType: "productSource", entityId: String(input.sourceId), summary: "Product source approved for patient-ready consent use" });
     return { success: true };
+  }),
+  verifyCanonicalSource: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), note: z.string().min(10).max(1000).default("Administrator confirmed the canonical document, language, version/date, and exact source excerpts.") })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const sourceRows = await db.select().from(productSources).where(eq(productSources.id, input.sourceId)).limit(1);
+    const source = sourceRows[0];
+    if (!source) throw new Error("Product source not found");
+    if (!source.documentTitle || !source.documentVersion || !source.retrievedAt || !source.documentUrl.startsWith("https://")) throw new Error("Canonical source verification requires an HTTPS URL, title, version or date, and retrieval timestamp");
+    const verifiedAt = new Date();
+    await db.update(productSources).set({ canonicalVerifiedAt: verifiedAt, canonicalVerifiedByUserId: ctx.user.id, canonicalVerificationNote: input.note }).where(eq(productSources.id, input.sourceId));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "source.canonical_verified", entityType: "productSource", entityId: String(input.sourceId), summary: `${source.documentKind.toUpperCase()} canonical document verified for source ${input.sourceId}` });
+    return { success: true, verifiedAt };
   }),
   verifyProductRegistry: protectedProcedure.input(z.object({ productId: z.number().int().positive(), jurisdiction: z.string().min(2).max(32).default("PL"), registryAuthority: z.string().min(2).max(160), registryIdentifier: z.string().min(2).max(160) })).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user);
@@ -54,13 +70,13 @@ export const catalogRouter = router({
     return { success: true, verifiedAt };
   }),
   createProductSource: protectedProcedure.input(z.object({
-    productName: z.string().min(2).max(160), manufacturer: z.string().min(2).max(160), category: z.enum(["neuromodulator", "ha_filler", "biostimulator", "other"]), activeIngredient: z.string().max(255).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), registryAuthority: z.string().max(160).optional(), registryIdentifier: z.string().max(160).optional(), documentTitle: z.string().min(3).max(255), documentUrl: z.string().url(), documentVersion: z.string().max(100).optional(), disclosures: z.array(sourceDisclosure).min(1),
+    productName: z.string().min(2).max(160), manufacturer: z.string().min(2).max(160), category: z.enum(["neuromodulator", "ha_filler", "biostimulator", "other"]), activeIngredient: z.string().max(255).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), registryAuthority: z.string().max(160).optional(), registryIdentifier: z.string().max(160).optional(), documentTitle: z.string().min(3).max(255), documentUrl: z.string().url().refine(url => url.startsWith("https://"), "Canonical document URL must use HTTPS"), documentVersion: z.string().min(2).max(100), documentKind: z.enum(["spc", "ifu", "pi", "dfu"]), disclosures: z.array(sourceDisclosure).min(1),
   })).mutation(async ({ ctx, input }) => {
     await requireAdmin(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
     const hasRegistryEvidence = Boolean(input.registryAuthority && input.registryIdentifier);
-    const source = await db.insert(productSources).values({ manufacturer: input.manufacturer, productName: input.productName, jurisdiction: input.jurisdiction, language: input.language, registryAuthority: input.registryAuthority || null, registryIdentifier: input.registryIdentifier || null, registryVerifiedAt: hasRegistryEvidence ? new Date() : null, documentTitle: input.documentTitle, documentUrl: input.documentUrl, documentVersion: input.documentVersion, retrievedAt: new Date(), reviewStatus: "pending" }).$returningId();
+    const source = await db.insert(productSources).values({ manufacturer: input.manufacturer, productName: input.productName, jurisdiction: input.jurisdiction, language: input.language, registryAuthority: input.registryAuthority || null, registryIdentifier: input.registryIdentifier || null, registryVerifiedAt: hasRegistryEvidence ? new Date() : null, documentTitle: input.documentTitle, documentUrl: input.documentUrl, documentVersion: input.documentVersion, documentKind: input.documentKind, retrievedAt: new Date(), reviewStatus: "pending" }).$returningId();
     const sourceId = source[0]?.id;
     if (!sourceId) throw new Error("Unable to register product source");
     const product = await db.insert(products).values({ sourceId, name: input.productName, manufacturer: input.manufacturer, category: input.category, activeIngredient: input.activeIngredient, registryIdentifier: input.registryIdentifier || null, registryStatus: hasRegistryEvidence ? "verified" : "unverified", isActive: true }).$returningId();

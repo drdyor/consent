@@ -1,0 +1,31 @@
+{
+  "baselineRevision": "2026-08-20",
+  "capturedViewports": {
+    "desktop": [1280, 720],
+    "mobile": [375, 812]
+  },
+  "imageArtifacts": {
+    "catalogueDesktop": "docs/visual-baselines/images/catalogue-desktop.png",
+    "sourceLibraryDesktop": "docs/visual-baselines/images/source-library-desktop.png",
+    "catalogueMobile": "docs/visual-baselines/images/catalogue-mobile.png",
+    "sourceLibraryMobile": "docs/visual-baselines/images/source-library-mobile.png",
+    "checksums": "docs/visual-baselines/images/SHA256SUMS"
+  },
+  "surfaces": {
+    "catalogue": {
+      "route": "/catalogue",
+      "requiredClasses": ["catalogue-hero", "catalogue-surface", "catalogue-row", "catalogue-chip", "catalogue-side-card"],
+      "requiredCopy": ["Clinical boundary preserved", "Evidence before reach.", "Open source library"]
+    },
+    "sourceLibrary": {
+      "route": "/templates",
+      "requiredClasses": ["source-ledger-panel", "source-evidence-panel", "source-ledger-row", "source-evidence-row"],
+      "requiredCopy": ["Controlled structures", "Evidence register", "Product source records"]
+    },
+    "inventoryLedger": {
+      "route": "/templates",
+      "requiredClasses": ["inventory-ledger", "inventory-ledger-row", "source-ledger-empty"],
+      "requiredCopy": ["Traceability ledger", "Clinic inventory lots"]
+    }
+  }
+}
