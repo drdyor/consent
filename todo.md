@@ -25,3 +25,16 @@
 - [x] Verify the patient-facing consent carries the assembled source-linked disclosure text forward to its locked signing snapshot.
 - [x] Render the clinic logo in generated signed-consent PDF output.
 - [ ] Add a searchable audit-event trail filtered by consent record, actor, and event date.
+- [ ] Reconcile Poland-first product scope and governing-market assumptions with verified current regulatory sources before relying on jurisdiction-specific consent content.
+- [ ] Add jurisdiction, language, product-registry, prescriber-license, and regulatory-evidence fields to the compliance data model.
+- [ ] Add Polish-first and bilingual Polish/English consent output with jurisdiction-specific template governance.
+- [ ] Add UMKiL-compatible product registration evidence and block patient-ready consent use when required approval evidence is absent.
+- [ ] Add anatomical injection-map, before/after photo, treatment-course, and per-product inventory-traceability workflows.
+- [ ] Evaluate and plan the required migration from hosted web storage to a clinic-controlled local-first desktop deployment before asserting local-storage or UODO/GDPR positioning.
+- [x] Add an interactive facial treatment map for documenting treatment areas, injection points, product, units or volume, lot, expiry, practitioner, and clinical notes.
+- [x] Persist treatment-map entries per consent and include the treatment map in signed records, audit events, and PDF output.
+- [x] Show the bound practitioner identity and product expiry in the facial treatment-map workspace, and test treatment-map documentation completeness.
+- [x] Prove that treatment-map entries are immutably bound to their consent’s practitioner, product lot, and expiry context in the locked record.
+- [x] Test treatment-map retention of product, quantity and measure, lot, expiry, practitioner, and clinical note data.
+- [x] Add a signing-route integration test that proves the database treatment-map payload is assembled and locked with its product, lot, expiry, practitioner, quantity, and clinical note context.
+- [x] Verify that the treatment-map view’s product, lot, expiry, and practitioner context matches the same consent’s locked signed-record context.

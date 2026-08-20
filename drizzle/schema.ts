@@ -1,5 +1,6 @@
 import {
   boolean,
+  decimal,
   index,
   int,
   json,
@@ -164,6 +165,25 @@ export const consentAcknowledgements = mysqlTable("consentAcknowledgements", {
   acknowledgedAt: timestamp("acknowledgedAt").notNull(),
 }, table => [index("acknowledgement_record_idx").on(table.consentRecordId)]);
 
+export const treatmentMapEntries = mysqlTable("treatmentMapEntries", {
+  id: int("id").autoincrement().primaryKey(),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  productId: int("productId").notNull().references(() => products.id),
+  faceView: mysqlEnum("faceView", ["front", "left", "right"]).default("front").notNull(),
+  areaKey: varchar("areaKey", { length: 64 }).notNull(),
+  coordinateX: decimal("coordinateX", { precision: 7, scale: 4 }).notNull(),
+  coordinateY: decimal("coordinateY", { precision: 7, scale: 4 }).notNull(),
+  measureType: mysqlEnum("measureType", ["units", "ml", "other"]).notNull(),
+  amount: decimal("amount", { precision: 8, scale: 2 }).notNull(),
+  clinicalNote: text("clinicalNote"),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("map_entry_record_idx").on(table.consentRecordId),
+  index("map_entry_product_idx").on(table.productId),
+]);
+
 export const auditEvents = mysqlTable("auditEvents", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),
@@ -190,3 +210,4 @@ export type Product = typeof products.$inferSelect;
 export type DisclosureBlock = typeof disclosureBlocks.$inferSelect;
 export type ConsentTemplate = typeof consentTemplates.$inferSelect;
 export type ConsentRecord = typeof consentRecords.$inferSelect;
+export type TreatmentMapEntry = typeof treatmentMapEntries.$inferSelect;

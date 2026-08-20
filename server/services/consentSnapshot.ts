@@ -18,6 +18,7 @@ export function buildSignedSnapshot(input: {
   signingMethod: "typed" | "drawn";
   signatureUrl: string | null;
   signedAt: Date;
+  treatmentMap?: unknown[];
 }) {
   const snapshot = {
     record: { ...input.record, signedAt: input.signedAt, signatureUrl: input.signatureUrl },
@@ -29,6 +30,7 @@ export function buildSignedSnapshot(input: {
     disclosures: input.disclosures,
     signer: { name: input.signerName, method: input.signingMethod, signatureUrl: input.signatureUrl, signedAt: input.signedAt },
     acknowledgements: input.disclosures.filter(disclosure => disclosure.requiredAcknowledgement).map(disclosure => ({ disclosureBlockId: disclosure.id, title: disclosure.title, acknowledgedAt: input.signedAt })),
+    treatmentMap: input.treatmentMap || [],
   };
   const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
   return { snapshot, snapshotHash };

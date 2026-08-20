@@ -1,6 +1,6 @@
 import { and, eq, or } from "drizzle-orm";
 import { z } from "zod";
-import { consentTemplates, disclosureBlocks, products, productSources } from "../../drizzle/schema";
+import { auditEvents, consentTemplates, disclosureBlocks, products, productSources } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
@@ -29,10 +29,11 @@ export const catalogRouter = router({
     return db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id));
   }),
   approveSource: protectedProcedure.input(z.object({ sourceId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-    await requireAdmin(ctx.user);
+    const workspace = await requireAdmin(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
     await db.update(productSources).set({ reviewStatus: "approved", reviewedByUserId: ctx.user.id, reviewedAt: new Date() }).where(eq(productSources.id, input.sourceId));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "source.approved", entityType: "productSource", entityId: String(input.sourceId), summary: "Product source approved for patient-ready consent use" });
     return { success: true };
   }),
   createProductSource: protectedProcedure.input(z.object({

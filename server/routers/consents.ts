@@ -1,17 +1,52 @@
 import { and, desc, eq, gte, like, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, clinics, consentAcknowledgements, consentRecords, consentTemplates, disclosureBlocks, practitionerProfiles, products, productSources, users } from "../../drizzle/schema";
+import { auditEvents, clinics, consentAcknowledgements, consentRecords, consentTemplates, disclosureBlocks, practitionerProfiles, products, productSources, treatmentMapEntries, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
 import { requireWorkspace } from "../services/workspace";
 import { buildSignedSnapshot, hasAllRequiredAcknowledgements } from "../services/consentSnapshot";
+import { bindTreatmentMapForSigning } from "../services/treatmentMapSnapshot";
+import { buildTreatmentMapConsentContext } from "../../shared/treatmentMapContext";
 
 const consentInput = z.object({
   templateId: z.number().int().positive(), productId: z.number().int().positive(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date(),
 });
 
 export const consentRouter = router({
+  mapEntries: protectedProcedure.input(z.object({ recordId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const workspace = await requireWorkspace(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const record = await db.select({ id: consentRecords.id }).from(consentRecords).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1);
+    if (!record[0]) throw new Error("Consent record not found");
+    return db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, input.recordId)).orderBy(treatmentMapEntries.createdAt);
+  }),
+  addMapEntry: protectedProcedure.input(z.object({ recordId: z.number().int().positive(), productId: z.number().int().positive(), faceView: z.enum(["front", "left", "right"]), areaKey: z.string().min(2).max(64), coordinateX: z.number().min(0).max(1), coordinateY: z.number().min(0).max(1), measureType: z.enum(["units", "ml", "other"]), amount: z.number().positive().max(9999), clinicalNote: z.string().max(2000).optional() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireWorkspace(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const record = await db.select().from(consentRecords).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1);
+    if (!record[0]) throw new Error("Consent record not found");
+    if (record[0].status !== "draft") throw new Error("Treatment map entries can only be added while a consent is a draft");
+    if (record[0].productId !== input.productId) throw new Error("Map entries must use the product selected on the consent record");
+    const created = await db.insert(treatmentMapEntries).values({ consentRecordId: input.recordId, productId: input.productId, faceView: input.faceView, areaKey: input.areaKey, coordinateX: String(input.coordinateX), coordinateY: String(input.coordinateY), measureType: input.measureType, amount: String(input.amount), clinicalNote: input.clinicalNote || null, createdByUserId: ctx.user.id }).$returningId();
+    const id = created[0]?.id;
+    if (!id) throw new Error("Unable to save treatment point");
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: input.recordId, actorUserId: ctx.user.id, action: "treatment_map.point_added", entityType: "treatmentMapEntry", entityId: String(id), summary: `${input.amount} ${input.measureType} documented at ${input.areaKey}` });
+    return { id };
+  }),
+  deleteMapEntry: protectedProcedure.input(z.object({ entryId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireWorkspace(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const rows = await db.select({ entry: treatmentMapEntries, record: consentRecords }).from(treatmentMapEntries).innerJoin(consentRecords, eq(treatmentMapEntries.consentRecordId, consentRecords.id)).where(and(eq(treatmentMapEntries.id, input.entryId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1);
+    const row = rows[0];
+    if (!row || row.record.status !== "draft") throw new Error("Only draft treatment points may be removed");
+    await db.delete(treatmentMapEntries).where(eq(treatmentMapEntries.id, input.entryId));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, action: "treatment_map.point_removed", entityType: "treatmentMapEntry", entityId: String(input.entryId), summary: "Treatment point removed from draft" });
+    return { success: true };
+  }),
   pending: protectedProcedure.query(async ({ ctx }) => {
     const workspace = await requireWorkspace(ctx.user);
     const db = await getDb();
@@ -26,7 +61,8 @@ export const consentRouter = router({
     const row = detail[0];
     if (!row) throw new Error("Consent record not found");
     const disclosures = await db.select().from(disclosureBlocks).where(and(eq(disclosureBlocks.productId, row.product.id), eq(disclosureBlocks.sourceId, row.source.id)));
-    return { ...row, disclosures: disclosures.filter(d => d.scope === "product" || d.treatmentAreaKey === row.record.treatmentAreaKey) };
+    const mapEntries = await db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, input.recordId)).orderBy(treatmentMapEntries.createdAt);
+    return { ...row, disclosures: disclosures.filter(d => d.scope === "product" || d.treatmentAreaKey === row.record.treatmentAreaKey), mapEntries };
   }),
   list: protectedProcedure.input(z.object({ search: z.string().max(120).optional(), status: z.enum(["draft", "sent", "signed", "voided"]).optional(), procedure: z.string().max(160).optional(), product: z.string().max(160).optional(), practitioner: z.string().max(160).optional(), dateFrom: z.coerce.date().optional(), dateTo: z.coerce.date().optional() }).optional()).query(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user);
@@ -96,7 +132,9 @@ export const consentRouter = router({
       const stored = await storagePut(`consents/${row.record.id}/signature.png`, bytes, "image/png");
       signatureUrl = stored.url;
     }
-    const { snapshot, snapshotHash } = buildSignedSnapshot({ record: row.record, template: { name: row.template.name, revision: row.template.revision, sections: row.template.sections }, product: row.product, source: row.source, practitioner: row.practitioner, clinic: workspace.clinic, disclosures: applicable, signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt });
+    const mapEntries = await db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, row.record.id)).orderBy(treatmentMapEntries.createdAt);
+    const signedTreatmentMap = bindTreatmentMapForSigning(mapEntries, buildTreatmentMapConsentContext(row.record, row.product, row.practitioner));
+    const { snapshot, snapshotHash } = buildSignedSnapshot({ record: row.record, template: { name: row.template.name, revision: row.template.revision, sections: row.template.sections }, product: row.product, source: row.source, practitioner: row.practitioner, clinic: workspace.clinic, disclosures: applicable, signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, treatmentMap: signedTreatmentMap });
     await db.transaction(async tx => {
       await tx.insert(consentAcknowledgements).values(required.map(d => ({ consentRecordId: row.record.id, disclosureBlockId: d.id, sectionKey: `disclosure-${d.id}`, sectionTitle: d.title, acknowledgedAt: signedAt })));
       await tx.update(consentRecords).set({ status: "signed", signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, signedSnapshot: snapshot, snapshotHash }).where(and(eq(consentRecords.id, row.record.id), eq(consentRecords.status, "sent")));

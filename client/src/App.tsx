@@ -11,9 +11,10 @@ import Templates from "./pages/Templates";
 import CreateConsent from "./pages/CreateConsent";
 import ReviewConsent from "./pages/ReviewConsent";
 import Records from "./pages/Records";
+import TreatmentMap from "./pages/TreatmentMap";
 
 function Router() {
-  return <AppShell><Switch><Route path="/review/:id" component={ReviewConsent} /><Route path="/" component={Home} /><Route path="/create" component={CreateConsent} /><Route path="/templates" component={Templates} /><Route path="/records" component={Records} /><Route path="/profile" component={Profile} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></AppShell>;
+  return <AppShell><Switch><Route path="/treatment-map/:id" component={TreatmentMap} /><Route path="/review/:id" component={ReviewConsent} /><Route path="/" component={Home} /><Route path="/create" component={CreateConsent} /><Route path="/templates" component={Templates} /><Route path="/records" component={Records} /><Route path="/profile" component={Profile} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></AppShell>;
 }
 
 function App() {
