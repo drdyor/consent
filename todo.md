@@ -132,14 +132,23 @@
 - [x] Add one-click copy and email-draft sharing actions for supplier capability links without storing a raw token.
 - [x] Build an overdue high-severity incident widget with controlled manual escalation and audit activity.
 - [x] Validate attachment access, token expiry, escalation transitions, sharing interactions, and desktop/mobile views.
-- [ ] Research and document the jurisdiction boundary for Poland/EU, UK MHRA/UKCA, and USA FDA/state-specific evidence without representing the product as legal advice.
-- [ ] Add clinic market profile, UKCA/MHRA, FDA authorization, and US state applicability fields to the governed compliance data model.
-- [ ] Implement market-specific eligibility gates that block patient-ready use when the selected clinic market lacks its required evidence and administrator verification.
-- [ ] Build a premium multi-jurisdiction selector and jurisdiction-aware source/product governance controls for Poland/EU, UK, and USA clinics.
-- [ ] Add UK and USA evidence-gate regression coverage, clinic-scope validation, and desktop/mobile visual verification.
-- [ ] Define clinic escalation-contact, automated delivery, retry, opt-in, and audit governance for overdue high-severity incidents.
-- [ ] Add clinic escalation contacts, escalation delivery records, and document scan-status metadata to the data model.
-- [ ] Implement administrator-only escalation contact configuration and idempotent automated overdue-incident delivery.
-- [ ] Implement a malware-scanning acceptance gate that blocks unscanned or unsafe supporting documents from administrator download.
-- [ ] Build premium escalation contacts, delivery audit, and document scan-status controls in Supplier Governance.
-- [ ] Validate notification delivery idempotency, contact scope, scan gating, administrator download access, and responsive views.
+- [x] Research and document the jurisdiction boundary for Poland/EU, UK MHRA/UKCA, and USA FDA/state-specific evidence without representing the product as legal advice.
+- [x] Add clinic market profile, UKCA/MHRA, FDA authorization, and US state applicability fields to the governed compliance data model.
+- [x] Implement market-specific eligibility gates that block patient-ready use when the selected clinic market lacks its required evidence and administrator verification.
+- [x] Build a premium multi-jurisdiction selector and jurisdiction-aware source/product governance controls for Poland/EU, UK, and USA clinics.
+- [x] Add UK and USA evidence-gate regression coverage, clinic-scope validation, and desktop/mobile visual verification.
+- [x] Review the UK MHRA/UKCA and USA FDA evidence gates against current official sources, documenting what the software checks and what it cannot determine.
+- [x] Research Poland/EU, Great Britain, and selected US-state authority sources and create a cited jurisdiction matrix with concrete control gaps.
+- [x] Refine UK and USA regulated-device evidence gates where the official-source review identifies missing distinction or unsupported assumptions.
+- [x] Add a concise legal-review prompt and evidence-boundary disclosure to the multi-jurisdiction clinic selector.
+- [x] Add regression coverage and responsive verification for revised evidence gates, jurisdiction matrix references, and the legal-review prompt.
+- [x] Define clinic escalation-contact, automated delivery, retry, opt-in, and audit governance for overdue high-severity incidents.
+- [x] Add clinic escalation contacts, escalation delivery records, and document scan-status metadata to the data model.
+- [x] Implement administrator-only escalation contact configuration and idempotent automated overdue-incident delivery.
+- [x] Implement a malware-scanning acceptance gate that blocks unscanned or unsafe supporting documents from administrator download.
+- [x] Build premium escalation contacts, delivery audit, and document scan-status controls in Supplier Governance.
+- [x] Validate notification delivery idempotency, contact scope, scan gating, administrator download access, and responsive views.
+- [x] Support both disabled-by-default signed webhook delivery and optional managed-email delivery for overdue high-severity incidents.
+- [x] Support both clinic-configured quarantine scan callbacks and optional commercial malware-scanning adapter configuration without storing provider credentials in application records.
+- [x] Add delivery and scanning configuration status, retry/attempt audit, and safe fallback states that never expose an unscanned or unsafe document.
+- [ ] Execute the drdyor/consent directive queue from WINDOW_C1 in order and pause for a user decision at WINDOW_C4 before any de-Manus work.

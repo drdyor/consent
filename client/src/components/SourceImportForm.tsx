@@ -4,14 +4,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { FileUp, Plus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export function SourceImportForm({ onComplete }: { onComplete: () => void }) {
   const [form, setForm] = useState({ productName: "", manufacturer: "", category: "neuromodulator" as const, activeIngredient: "", jurisdiction: "PL", language: "pl" as "pl" | "en", registryAuthority: "", registryIdentifier: "", documentTitle: "", documentUrl: "", documentVersion: "", documentKind: "spc" as "spc" | "ifu" | "pi" | "dfu", disclosureTitle: "", disclosureBody: "", scope: "product" as "product" | "area", area: "" });
+  const workspace = trpc.workspace.overview.useQuery();
   const create = trpc.catalog.createProductSource.useMutation({ onSuccess: () => { toast.success("Canonical source registered for administrator verification"); onComplete(); }, onError: error => toast.error(error.message) });
   const update = (key: keyof typeof form, value: string) => setForm({ ...form, [key]: value });
-  const canSubmit = Boolean(form.productName && form.manufacturer && form.documentTitle && form.documentUrl && form.documentVersion && form.disclosureTitle && form.disclosureBody && (form.scope !== "area" || form.area));
+  const market = workspace.data?.clinic.complianceMarket || "pl_eu";
+  const registryLabel = market === "uk_gb" ? "MHRA registration authority" : market === "usa" ? "FDA authority" : "Registry authority";
+  const registryPlaceholder = market === "uk_gb" ? "MHRA" : market === "usa" ? "FDA" : "e.g. URPL / EUDAMED";
+  useEffect(() => { const jurisdiction = market === "pl_eu" ? "PL" : market === "uk_gb" ? "UK" : "US"; setForm(previous => ({ ...previous, jurisdiction, language: market === "pl_eu" ? previous.language : "en" })); }, [market]);
+  const canSubmit = Boolean(form.productName && form.manufacturer && form.registryAuthority && form.registryIdentifier && form.documentTitle && form.documentUrl && form.documentVersion && form.disclosureTitle && form.disclosureBody && (form.scope !== "area" || form.area));
 
   return <section className="clinical-panel mt-7 p-6">
     <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-[#e9e1d3] text-[#24453e]"><FileUp className="size-5" /></div><div><h2 className="font-semibold text-[#24453e]">Register product source</h2><p className="text-xs text-muted-foreground">Register only a canonical SPC, IFU, PI, or DFU document. A clinic administrator must verify the document and relevant registry evidence before patient-ready use.</p></div></div>
@@ -20,12 +25,12 @@ export function SourceImportForm({ onComplete }: { onComplete: () => void }) {
       <div className="space-y-2"><Label>Manufacturer</Label><Input value={form.manufacturer} onChange={e => update("manufacturer", e.target.value)} placeholder="Manufacturer name" /></div>
       <div className="space-y-2"><Label>Category</Label><select value={form.category} onChange={e => update("category", e.target.value)} className="h-10 w-full rounded-xl border border-[#ded7cb] bg-white px-3 text-sm"><option value="neuromodulator">Neuromodulator</option><option value="ha_filler">HA filler</option><option value="biostimulator">Biostimulator</option><option value="other">Other injectable / device</option></select></div>
       <div className="space-y-2"><Label>Active ingredient / composition</Label><Input value={form.activeIngredient} onChange={e => update("activeIngredient", e.target.value)} /></div>
-      <div className="space-y-2"><Label>Jurisdiction</Label><Input value={form.jurisdiction} onChange={e => update("jurisdiction", e.target.value.toUpperCase())} placeholder="PL" /></div>
-      <div className="space-y-2"><Label>Document language</Label><select value={form.language} onChange={e => update("language", e.target.value)} className="h-10 w-full rounded-xl border border-[#ded7cb] bg-white px-3 text-sm"><option value="pl">Polish</option><option value="en">English</option></select></div>
+      <div className="space-y-2"><Label>Clinic compliance market</Label><Input value={market === "pl_eu" ? "Poland / European Union" : market === "uk_gb" ? "Great Britain (MHRA / UKCA)" : "United States (FDA + state)"} disabled className="h-10 bg-[#f4f2ec]" /></div>
+      <div className="space-y-2"><Label>Document language</Label><select value={form.language} onChange={e => update("language", e.target.value)} className="h-10 w-full rounded-xl border border-[#ded7cb] bg-white px-3 text-sm"><option value="pl" disabled={market !== "pl_eu"}>Polish</option><option value="en">English</option></select></div>
       <div className="space-y-2"><Label>Canonical document type</Label><select value={form.documentKind} onChange={e => update("documentKind", e.target.value)} className="h-10 w-full rounded-xl border border-[#ded7cb] bg-white px-3 text-sm"><option value="spc">SPC / ChPL</option><option value="ifu">IFU</option><option value="pi">Prescribing information</option><option value="dfu">Directions for use</option></select></div>
       <div className="space-y-2"><Label>Document version / date</Label><Input value={form.documentVersion} onChange={e => update("documentVersion", e.target.value)} placeholder="e.g. May 2025" /></div>
-      <div className="space-y-2"><Label>Registry authority</Label><Input value={form.registryAuthority} onChange={e => update("registryAuthority", e.target.value)} placeholder="e.g. URPL / Eudamed" /></div>
-      <div className="space-y-2"><Label>Registry identifier</Label><Input value={form.registryIdentifier} onChange={e => update("registryIdentifier", e.target.value)} placeholder="Registration, UDI, or registry reference" /></div>
+      <div className="space-y-2"><Label>{registryLabel}</Label><Input value={form.registryAuthority} onChange={e => update("registryAuthority", e.target.value)} placeholder={registryPlaceholder} /></div>
+      <div className="space-y-2"><Label>{market === "uk_gb" ? "MHRA registration identifier" : market === "usa" ? "FDA evidence identifier" : "Registry identifier"}</Label><Input value={form.registryIdentifier} onChange={e => update("registryIdentifier", e.target.value)} placeholder="Registration, UDI, or registry reference" /></div>
       <div className="space-y-2 md:col-span-2"><Label>Canonical document title</Label><Input value={form.documentTitle} onChange={e => update("documentTitle", e.target.value)} placeholder="Exact manufacturer SPC, PI, IFU, or DFU title" /></div>
       <div className="space-y-2 md:col-span-2"><Label>HTTPS document URL</Label><Input value={form.documentUrl} onChange={e => update("documentUrl", e.target.value)} placeholder="https://..." /></div>
       <div className="space-y-2"><Label>Disclosure scope</Label><select value={form.scope} onChange={e => update("scope", e.target.value)} className="h-10 w-full rounded-xl border border-[#ded7cb] bg-white px-3 text-sm"><option value="product">Product-wide</option><option value="area">Anatomical area</option></select></div>

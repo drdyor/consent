@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, like, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, clinics, consentAcknowledgements, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
+import { auditEvents, clinics, consentAcknowledgements, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -8,6 +8,7 @@ import { requireWorkspace } from "../services/workspace";
 import { buildSignedSnapshot, hasAllRequiredAcknowledgements } from "../services/consentSnapshot";
 import { bindTreatmentMapForSigning } from "../services/treatmentMapSnapshot";
 import { buildTreatmentMapConsentContext } from "../../shared/treatmentMapContext";
+import { getMarketEvidenceGate } from "../services/marketCompliance";
 
 const consentInput = z.object({
   templateId: z.number().int().positive(), productId: z.number().int().positive(), inventoryLotId: z.number().int().positive().optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
@@ -139,13 +140,17 @@ export const consentRouter = router({
     const productRecord = await db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id)).where(eq(products.id, input.productId)).limit(1);
     const product = productRecord[0];
     if (!product || product.source.reviewStatus !== "approved") throw new Error("The selected product source requires clinic-administrator approval before it can be included in a consent");
-    if (product.source.jurisdiction === "PL" && product.product.registryStatus !== "verified") throw new Error("The selected product requires verified Polish registry evidence before it can be included in a patient consent");
+    const catalogue = product.source.marketCatalogueProductId ? (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, product.source.marketCatalogueProductId)).limit(1))[0] : null;
+    const sourceForMarketGate = { ...product.source, registryIdentifier: product.source.registryIdentifier || product.product.registryIdentifier || (product.product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: product.source.registryVerifiedAt || (product.product.registryStatus === "verified" ? new Date() : null) };
+    const marketGate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, catalogue);
+    if (!marketGate.eligible) throw new Error(marketGate.message);
     if (product.source.language !== input.language) throw new Error("The selected product source is not governed for this consent language");
     const inventoryLot = input.inventoryLotId ? (await db.select().from(productInventoryLots).where(and(eq(productInventoryLots.id, input.inventoryLotId), eq(productInventoryLots.clinicId, workspace.clinic.id), eq(productInventoryLots.productId, input.productId))).limit(1))[0] : null;
     if (input.inventoryLotId && !inventoryLot) throw new Error("The selected inventory lot is not available for this clinic product");
     const template = await db.select().from(consentTemplates).where(eq(consentTemplates.id, input.templateId)).limit(1);
     if (!template[0]) throw new Error("Consent template not found");
     if (template[0].jurisdiction !== input.jurisdiction || template[0].language !== input.language) throw new Error("The selected template is not governed for this consent jurisdiction and language");
+    if (input.jurisdiction !== (workspace.clinic.jurisdiction || "PL")) throw new Error("The selected consent jurisdiction does not match this clinic's compliance market profile");
     const created = await db.insert(consentRecords).values({ ...input, lotNumber: inventoryLot?.lotNumber || input.lotNumber, expiryDate: inventoryLot?.expiryDate || input.expiryDate, patientEmail: input.patientEmail || null, clinicId: workspace.clinic.id, templateRevision: template[0].revision, practitionerUserId: ctx.user.id, sourceId: product.source.id, status: "draft" }).$returningId();
     const id = created[0]?.id;
     if (!id) throw new Error("Unable to create consent");

@@ -41,7 +41,8 @@ export const catalogRouter = router({
     const sourceBlocks = await db.select({ id: disclosureBlocks.id }).from(disclosureBlocks).where(eq(disclosureBlocks.sourceId, input.sourceId)).limit(1);
     if (!sourceBlocks.length) throw new Error("A patient-ready source must contain at least one curated canonical disclosure excerpt");
     const catalogue = row.source.marketCatalogueProductId ? (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, row.source.marketCatalogueProductId)).limit(1))[0] : null;
-    const gate = getMarketEvidenceGate(workspace.clinic, row.source, catalogue);
+    const sourceForMarketGate = { ...row.source, registryIdentifier: row.source.registryIdentifier || row.product.registryIdentifier || (row.product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: row.source.registryVerifiedAt || (row.product.registryStatus === "verified" ? new Date() : null) };
+    const gate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, catalogue);
     if (!gate.eligible) throw new Error(gate.message);
     await db.update(productSources).set({ reviewStatus: "approved", reviewedByUserId: ctx.user.id, reviewedAt: new Date() }).where(eq(productSources.id, input.sourceId));
     await db.update(products).set({ isActive: true }).where(eq(products.sourceId, input.sourceId));
@@ -75,17 +76,22 @@ export const catalogRouter = router({
     return { success: true, verifiedAt };
   }),
   recordMarketJurisdictionEvidence: protectedProcedure.input(z.union([
-    z.object({ catalogueProductId: z.number().int().positive(), market: z.literal("uk_gb"), ukMarketRoute: z.enum(["ukca", "ce_transitional", "not_applicable"]), ukMhRARegistrationIdentifier: z.string().min(2).max(160), ukMhRARegistrationUrl: optionalHttpsUrl, ukConformityCertificateUrl: optionalHttpsUrl, ukResponsiblePerson: z.string().max(200).optional() }),
-    z.object({ catalogueProductId: z.number().int().positive(), market: z.literal("usa"), fdaMarketingAuthorizationType: z.enum(["510k", "de_novo", "pma", "hde", "exempt", "not_applicable"]), fdaMarketingAuthorizationNumber: z.string().max(160).optional(), fdaRegistrationListingUrl: optionalHttpsUrl }),
+    z.object({ catalogueProductId: z.number().int().positive(), market: z.literal("uk_gb"), ukMarketRoute: z.enum(["ukca", "ce_transitional"]), ukMhRARegistrationIdentifier: z.string().min(2).max(160), ukMhRARegistrationUrl: optionalHttpsUrl, ukConformityCertificateUrl: optionalHttpsUrl, ukConformityEvidenceType: z.enum(["certificate", "declaration_of_conformity", "self_declaration"]), ukCeTransitionalBasis: z.enum(["eu_mdr_ivdr", "mdd_aimdd", "ivdd", "unresolved"]), ukCeTransitionalExpiryAt: z.date().optional(), ukResponsiblePersonStatus: z.enum(["appointed", "not_required"]), ukResponsiblePerson: z.string().max(200).optional(), ukResponsiblePersonEvidenceUrl: optionalHttpsUrl }),
+    z.object({ catalogueProductId: z.number().int().positive(), market: z.literal("usa"), fdaMarketingAuthorizationType: z.enum(["510k", "de_novo", "pma", "hde", "exempt"]), fdaMarketingAuthorizationNumber: z.string().max(160).optional(), fdaMarketingAuthorizationUrl: optionalHttpsUrl, fdaExemptionRationale: z.string().max(1000).optional(), fdaExemptionEvidenceUrl: optionalHttpsUrl, fdaRegistrationListingUrl: optionalHttpsUrl }),
   ])).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
     const catalogue = (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, input.catalogueProductId)).limit(1))[0]; if (!catalogue) throw new Error("Catalogue record not found"); const verifiedAt = new Date();
     if (input.market === "uk_gb") {
-      if (!input.ukMhRARegistrationUrl || !input.ukConformityCertificateUrl) throw new Error("Great Britain evidence requires HTTPS MHRA registration and conformity certificate URLs");
-      await db.update(marketCatalogueProducts).set({ ukMarketRoute: input.ukMarketRoute, ukMhRARegistrationIdentifier: input.ukMhRARegistrationIdentifier, ukMhRARegistrationUrl: input.ukMhRARegistrationUrl, ukConformityCertificateUrl: input.ukConformityCertificateUrl, ukResponsiblePerson: input.ukResponsiblePerson || null, ukEvidenceVerifiedAt: verifiedAt }).where(eq(marketCatalogueProducts.id, catalogue.id));
+      if (catalogue.productClassification !== "medical_device") throw new Error("Great Britain UKCA/CE route evidence applies only to catalogue records classified as medical devices");
+      const transitionReady = input.ukMarketRoute !== "ce_transitional" || (input.ukCeTransitionalBasis !== "unresolved" && input.ukCeTransitionalExpiryAt && input.ukCeTransitionalExpiryAt.getTime() >= Date.now());
+      const responsiblePersonReady = input.ukResponsiblePersonStatus === "not_required" || Boolean(input.ukResponsiblePerson && input.ukResponsiblePersonEvidenceUrl);
+      if (!input.ukMhRARegistrationUrl || !input.ukConformityCertificateUrl || !transitionReady || !responsiblePersonReady) throw new Error("Great Britain device evidence requires HTTPS MHRA and conformity URLs, documented UK Responsible Person status, and (for a CE transition) legal basis plus an unexpired transition date");
+      await db.update(marketCatalogueProducts).set({ ukMarketRoute: input.ukMarketRoute, ukMhRARegistrationIdentifier: input.ukMhRARegistrationIdentifier, ukMhRARegistrationUrl: input.ukMhRARegistrationUrl, ukConformityCertificateUrl: input.ukConformityCertificateUrl, ukConformityEvidenceType: input.ukConformityEvidenceType, ukCeTransitionalBasis: input.ukMarketRoute === "ce_transitional" ? input.ukCeTransitionalBasis : "unresolved", ukCeTransitionalExpiryAt: input.ukMarketRoute === "ce_transitional" ? input.ukCeTransitionalExpiryAt || null : null, ukResponsiblePersonStatus: input.ukResponsiblePersonStatus, ukResponsiblePerson: input.ukResponsiblePerson || null, ukResponsiblePersonEvidenceUrl: input.ukResponsiblePersonEvidenceUrl || null, ukEvidenceVerifiedAt: verifiedAt }).where(eq(marketCatalogueProducts.id, catalogue.id));
     } else {
-      if (!input.fdaRegistrationListingUrl || (input.fdaMarketingAuthorizationType !== "exempt" && input.fdaMarketingAuthorizationType !== "not_applicable" && !input.fdaMarketingAuthorizationNumber)) throw new Error("USA evidence requires an HTTPS FDA registration/listing URL and a marketing-authorization number unless documented as exempt or not applicable");
-      await db.update(marketCatalogueProducts).set({ fdaMarketingAuthorizationType: input.fdaMarketingAuthorizationType, fdaMarketingAuthorizationNumber: input.fdaMarketingAuthorizationNumber || null, fdaRegistrationListingUrl: input.fdaRegistrationListingUrl, fdaEvidenceVerifiedAt: verifiedAt }).where(eq(marketCatalogueProducts.id, catalogue.id));
+      if (catalogue.productClassification !== "medical_device") throw new Error("FDA device evidence applies only to catalogue records classified as medical devices; drug, biologic, and combination-product review remains separate");
+      const authorizationReady = input.fdaMarketingAuthorizationType === "exempt" ? Boolean(input.fdaExemptionRationale && input.fdaExemptionEvidenceUrl) : Boolean(input.fdaMarketingAuthorizationNumber && input.fdaMarketingAuthorizationUrl);
+      if (!input.fdaRegistrationListingUrl || !authorizationReady) throw new Error("USA device evidence requires a separate HTTPS registration/listing URL plus either FDA authorization number and source URL or an exemption rationale and official source URL");
+      await db.update(marketCatalogueProducts).set({ fdaMarketingAuthorizationType: input.fdaMarketingAuthorizationType, fdaMarketingAuthorizationNumber: input.fdaMarketingAuthorizationNumber || null, fdaMarketingAuthorizationUrl: input.fdaMarketingAuthorizationUrl || null, fdaExemptionRationale: input.fdaExemptionRationale || null, fdaExemptionEvidenceUrl: input.fdaExemptionEvidenceUrl || null, fdaRegistrationListingUrl: input.fdaRegistrationListingUrl, fdaEvidenceVerifiedAt: verifiedAt }).where(eq(marketCatalogueProducts.id, catalogue.id));
     }
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: `catalogue.${input.market}_evidence_verified`, entityType: "marketCatalogueProduct", entityId: String(catalogue.id), summary: `${input.market === "uk_gb" ? "Great Britain MHRA/UKCA" : "USA FDA"} evidence recorded for ${catalogue.brandName}` }); return { success: true, verifiedAt };
   }),
@@ -180,13 +186,15 @@ export const catalogRouter = router({
     const sources = records.map(({ product, source }) => {
       const disclosureCount = blocks.filter(block => block.sourceId === source.id).length;
       const canonicalReady = Boolean(source.canonicalVerifiedAt && source.canonicalVerifiedByUserId && source.canonicalVerificationNote);
-      const gate = getMarketEvidenceGate(workspace.clinic, source, source.marketCatalogueProductId ? catalogueRecords.find(item => item.id === source.marketCatalogueProductId) : null);
+      const sourceForMarketGate = { ...source, registryIdentifier: source.registryIdentifier || product.registryIdentifier || (product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: source.registryVerifiedAt || (product.registryStatus === "verified" ? new Date() : null) };
+      const gate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, source.marketCatalogueProductId ? catalogueRecords.find(item => item.id === source.marketCatalogueProductId) : null);
       const eligibleForApproval = canonicalReady && gate.eligible && disclosureCount > 0;
       return { sourceId: source.id, productId: product.id, productName: product.name, documentKind: source.documentKind, reviewStatus: source.reviewStatus, disclosureCount, canonicalReady, registryReady: gate.eligible, marketGateCode: gate.code, marketGateMessage: gate.message, eligibleForApproval };
     });
     const disclosureBlockAudits = records.flatMap(({ product, source }) => {
       const canonicalReady = Boolean(source.canonicalVerifiedAt && source.canonicalVerifiedByUserId && source.canonicalVerificationNote);
-      const gate = getMarketEvidenceGate(workspace.clinic, source, source.marketCatalogueProductId ? catalogueRecords.find(item => item.id === source.marketCatalogueProductId) : null);
+      const sourceForMarketGate = { ...source, registryIdentifier: source.registryIdentifier || product.registryIdentifier || (product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: source.registryVerifiedAt || (product.registryStatus === "verified" ? new Date() : null) };
+      const gate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, source.marketCatalogueProductId ? catalogueRecords.find(item => item.id === source.marketCatalogueProductId) : null);
       return blocks.filter(block => block.sourceId === source.id).map(block => ({
         disclosureBlockId: block.id,
         sourceId: source.id,

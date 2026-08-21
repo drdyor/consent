@@ -1,0 +1,1 @@
+ALTER TABLE `supplierCorrectiveActionDocuments` ADD `commercialScanAnalysisId` varchar(255);

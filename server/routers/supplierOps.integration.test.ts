@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ workspace: { clinic: { id: 4 }, membership: { role: "admin" } }, rejectAdmin: false, insertedReminders: [] as any[], insertedCorrectiveActions: [] as any[], insertedCorrectiveDocuments: [] as any[], updates: [] as any[], settings: { id: 2, clinicId: 4, reminderDays: 30, externalDeliveryEnabled: false, deliveryChannel: "none" }, documents: [{ id: 19, clinicId: 4, marketCatalogueProductId: 7, documentType: "ce_certificate", expiresAt: new Date("2026-09-01T00:00:00.000Z"), reminderThresholdDays: 30 }], incidents: [{ id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null }], correctiveActions: [{ id: 801, clinicId: 4, supplierIncidentId: 501, status: "issued", expiresAt: new Date("2099-09-01T00:00:00.000Z") }], correctiveDocuments: [] as any[], summaryReviews: [] as any[], summaryIncidents: [] as any[], summaryCorrectiveActions: [] as any[], existingReminders: [] as any[] }));
+const state = vi.hoisted(() => ({ workspace: { clinic: { id: 4 }, membership: { role: "admin" } }, rejectAdmin: false, insertedReminders: [] as any[], insertedCorrectiveActions: [] as any[], insertedCorrectiveDocuments: [] as any[], escalationContacts: [] as any[], updates: [] as any[], settings: { id: 2, clinicId: 4, reminderDays: 30, externalDeliveryEnabled: false, deliveryChannel: "none" }, documents: [{ id: 19, clinicId: 4, marketCatalogueProductId: 7, documentType: "ce_certificate", expiresAt: new Date("2026-09-01T00:00:00.000Z"), reminderThresholdDays: 30 }], incidents: [{ id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null }], correctiveActions: [{ id: 801, clinicId: 4, supplierIncidentId: 501, status: "issued", expiresAt: new Date("2099-09-01T00:00:00.000Z") }], correctiveDocuments: [] as any[], summaryReviews: [] as any[], summaryIncidents: [] as any[], summaryCorrectiveActions: [] as any[], existingReminders: [] as any[] }));
 
 vi.mock("../db", () => ({ getDb: vi.fn(async () => ({
   select: vi.fn((shape?: any) => ({ from: (table: any) => {
     const name = table?.[Symbol.for("drizzle:Name")];
-    const rows = name === "supplierReminderSettings" ? [state.settings] : name === "supplierEvidenceDocuments" ? state.documents : name === "supplierEvidenceReminders" ? state.existingReminders : name === "supplierPerformanceReviews" ? state.summaryReviews : name === "supplierIncidents" ? shape ? state.summaryIncidents : state.incidents : name === "supplierCorrectiveActions" ? shape ? state.summaryCorrectiveActions : state.correctiveActions : name === "supplierCorrectiveActionDocuments" ? state.correctiveDocuments : name === "productInventoryLots" ? [{ id: 31, clinicId: 4, productId: 8, lotNumber: "LOT-08", quantity: "1.00" }] : name === "supplierPurchaseOrderLines" ? [{ id: 41, purchaseOrderId: 9, productId: 8, expectedQuantity: "1.00", receivedQuantity: "1.00", expectedLotNumber: "LOT-08" }] : name === "supplierPurchaseOrders" ? [{ id: 9, clinicId: 4 }] : [];
+    const rows = name === "supplierReminderSettings" ? [state.settings] : name === "supplierEscalationContacts" ? state.escalationContacts : name === "supplierEvidenceDocuments" ? state.documents : name === "supplierEvidenceReminders" ? state.existingReminders : name === "supplierPerformanceReviews" ? state.summaryReviews : name === "supplierIncidents" ? shape ? state.summaryIncidents : state.incidents : name === "supplierCorrectiveActions" ? shape ? state.summaryCorrectiveActions : state.correctiveActions : name === "supplierCorrectiveActionDocuments" ? state.correctiveDocuments : name === "productInventoryLots" ? [{ id: 31, clinicId: 4, productId: 8, lotNumber: "LOT-08", quantity: "1.00" }] : name === "supplierPurchaseOrderLines" ? [{ id: 41, purchaseOrderId: 9, productId: 8, expectedQuantity: "1.00", receivedQuantity: "1.00", expectedLotNumber: "LOT-08" }] : name === "supplierPurchaseOrders" ? [{ id: 9, clinicId: 4 }] : [];
     const chain = { limit: async () => rows, then: (resolve: (value: any[]) => unknown) => Promise.resolve(rows).then(resolve) };
     const joinChain = { where: () => chain, innerJoin: () => joinChain };
     return { where: () => chain, innerJoin: () => joinChain };
   } })),
-  insert: vi.fn((table: any) => ({ values: (values: any) => { const name = table?.[Symbol.for("drizzle:Name")]; if (name === "supplierEvidenceReminders") { state.insertedReminders.push(values); state.existingReminders.push(values); } if (name === "supplierCorrectiveActions") state.insertedCorrectiveActions.push(values); if (name === "supplierCorrectiveActionDocuments") state.insertedCorrectiveDocuments.push(values); return { $returningId: async () => [{ id: 77 }] }; } })),
+  insert: vi.fn((table: any) => ({ values: (values: any) => { const name = table?.[Symbol.for("drizzle:Name")]; if (name === "supplierEvidenceReminders") { state.insertedReminders.push(values); state.existingReminders.push(values); } if (name === "supplierCorrectiveActions") state.insertedCorrectiveActions.push(values); if (name === "supplierCorrectiveActionDocuments") state.insertedCorrectiveDocuments.push(values); if (name === "supplierEscalationContacts") state.escalationContacts.push({ id: 77, ...values }); return { $returningId: async () => [{ id: 77 }] }; } })),
   update: vi.fn(() => ({ set: (values: any) => ({ where: async () => state.updates.push(values) }) })),
 } )) }));
 vi.mock("../services/workspace", () => ({ requireWorkspace: vi.fn(async () => state.workspace), requireAdmin: vi.fn(async () => { if (state.rejectAdmin) throw new Error("Administrator permissions are required"); return state.workspace; }) }));
@@ -87,6 +87,13 @@ describe("supplier evidence and reconciliation governance", () => {
     expect(result.token).toBeTruthy(); expect(state.insertedCorrectiveActions[0]).toMatchObject({ clinicId: 4, supplierIncidentId: 501, contactName: "Supplier quality lead" }); expect(state.insertedCorrectiveActions[0].tokenHash).toMatch(/^[a-f0-9]{64}$/); expect(state.insertedCorrectiveActions[0].tokenHash).not.toBe(result.token);
   });
 
+  it("stores signed-webhook contact secrets encrypted rather than in plaintext", async () => {
+    state.escalationContacts.length = 0;
+    await expect(appRouter.createCaller(ctx as any).supplierOps.saveEscalationContact({ displayName: "Quality governance webhook", webhookUrl: "https://hooks.example/aegis", webhookSecret: "a-secret-that-is-long-enough", emailEnabled: false, webhookEnabled: true, receiveHigh: true, receiveCritical: true, isActive: true })).resolves.toEqual({ id: 77 });
+    expect(state.escalationContacts[0]).toMatchObject({ clinicId: 4, webhookUrl: "https://hooks.example/aegis", webhookEnabled: true }); expect(state.escalationContacts[0].webhookSecretCiphertext).not.toContain("a-secret-that-is-long-enough");
+    state.escalationContacts.length = 0;
+  });
+
   it("allows lifecycle controls only within the current clinic and blocks expired supplier response capability", async () => {
     state.updates.length = 0;
     await expect(appRouter.createCaller(ctx as any).supplierOps.revokeCorrectiveAction({ correctiveActionId: 801 })).resolves.toEqual({ success: true }); expect(state.updates).toContainEqual(expect.objectContaining({ status: "revoked" }));
@@ -94,6 +101,12 @@ describe("supplier evidence and reconciliation governance", () => {
     state.correctiveActions[0].expiresAt = new Date("2000-01-01T00:00:00.000Z");
     await expect(appRouter.createCaller(ctx as any).supplierOps.respondToCorrectiveAction({ token: "secure-token-value-that-is-long-enough-for-validation", response: "This response should be blocked because the request has expired." })).rejects.toThrow("expired");
     state.correctiveActions[0].expiresAt = new Date("2099-09-01T00:00:00.000Z");
+  });
+
+  it("blocks a supplier response when an attached file has an unsafe scan verdict", async () => {
+    state.correctiveDocuments.splice(0, state.correctiveDocuments.length, { id: 88, clinicId: 4, supplierCorrectiveActionId: 801, scanStatus: "unsafe" });
+    await expect(appRouter.createCaller(ctx as any).supplierOps.respondToCorrectiveAction({ token: "secure-token-value-that-is-long-enough-for-validation", response: "This response must be held while the unsafe supporting attachment is resolved." })).rejects.toThrow("marked unsafe");
+    state.correctiveDocuments.length = 0;
   });
 
   it("exports only current-clinic supplier performance, incident, and corrective-action rows in the audit pack", async () => {

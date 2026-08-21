@@ -10,11 +10,12 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
 import { and, eq } from "drizzle-orm";
-import { supplierCorrectiveActionDocuments, supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
+import { supplierCorrectiveActionDocuments, supplierEscalationSettings, supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { requireAdmin } from "../services/workspace";
-import { runEvidenceExpiryScan } from "../routers/supplierOps";
+import { recordSupplierDocumentScanVerdict, runCommercialDocumentScanFollowup, runEvidenceExpiryScan, runOverdueIncidentDeliveryScan } from "../routers/supplierOps";
 import { storageGetSignedUrl } from "../storage";
+import { canReleaseSupplierDocument } from "../services/supplierEscalation";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -69,6 +70,7 @@ async function startServer() {
       if (!db) return res.status(503).send("Database unavailable");
       const document = (await db.select().from(supplierCorrectiveActionDocuments).where(and(eq(supplierCorrectiveActionDocuments.id, documentId), eq(supplierCorrectiveActionDocuments.clinicId, workspace.clinic.id))).limit(1))[0];
       if (!document) return res.status(404).send("Supporting document not found");
+      if (!canReleaseSupplierDocument(document.scanStatus)) return res.status(423).send("Supporting document remains quarantined until a clean scan verdict is recorded");
       return res.redirect(307, await storageGetSignedUrl(document.storageKey));
     } catch (error) {
       console.error("[SupplierCorrectiveAction] document download failed", error);
@@ -87,6 +89,30 @@ async function startServer() {
     } catch (error) {
       console.error("[SupplierEvidence] expiry scan failed", error);
       return res.status(500).json({ error: "Expiry scan failed" });
+    }
+  });
+  app.post("/api/supplier-document-scan-result", async (req, res) => {
+    try {
+      const documentId = Number(req.body?.documentId); const callbackToken = String(req.body?.scanCallbackToken || ""); const verdict = req.body?.verdict;
+      if (!Number.isInteger(documentId) || documentId < 1 || callbackToken.length < 20 || (verdict !== "clean" && verdict !== "unsafe")) return res.status(400).json({ error: "Invalid scanner callback payload" });
+      return res.json(await recordSupplierDocumentScanVerdict(documentId, callbackToken, verdict, typeof req.body?.note === "string" ? req.body.note : undefined));
+    } catch (error) {
+      console.error("[SupplierDocumentScan] scanner callback failed", error);
+      return res.status(403).json({ error: "Scanner callback rejected" });
+    }
+  });
+  app.post("/api/scheduled/supplier-incident-escalations", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "Scheduled-task identity required" });
+      const db = await getDb(); if (!db) return res.status(503).json({ error: "Database unavailable" });
+      const setting = (await db.select().from(supplierEscalationSettings).where(eq(supplierEscalationSettings.scheduleCronTaskUid, user.taskUid)).limit(1))[0];
+      if (!setting) return res.json({ ok: true, skipped: "orphan" });
+      const [delivery, scanFollowup] = await Promise.all([runOverdueIncidentDeliveryScan(setting.clinicId), runCommercialDocumentScanFollowup(setting.clinicId)]);
+      return res.json({ ok: true, delivery, scanFollowup });
+    } catch (error) {
+      console.error("[SupplierEscalation] scheduled scan failed", error);
+      return res.status(500).json({ error: "Supplier escalation scan failed", timestamp: new Date().toISOString() });
     }
   });
   // tRPC API
