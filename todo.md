@@ -125,4 +125,4 @@
 - [x] Add integration coverage for corrective-action issuance, revocation, public supplier response, expiry/revoked blocking, clinic scoping, and audit-pack data content.
 - [x] Apply consistent high-legibility hierarchy and status semantics across all Supplier Governance panels, not only the hero and access boundary.
 - [x] Re-verify the complete refined Supplier Governance workspace at desktop and mobile widths.
-- [ ] Push the validated completed project to the selected drdyor/consent repository.
+- [x] Push the validated completed project to the selected drdyor/consent repository.
