@@ -4,6 +4,7 @@ import { auditEvents, consentTemplates, disclosureBlocks, marketCatalogueProduct
 import { getDb } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
+import { getMarketEvidenceGate } from "../services/marketCompliance";
 
 const templateSections = z.array(z.object({ id: z.string(), title: z.string().min(1), body: z.string().min(1), required: z.boolean() }));
 const sourceDisclosure = z.object({ scope: z.enum(["product", "area"]), treatmentAreaKey: z.string().max(64).optional(), kind: z.enum(["contraindication", "warning", "precaution", "adverse_event"]), title: z.string().min(2).max(255), body: z.string().min(2).max(16000), requiredAcknowledgement: z.boolean().default(true) });
@@ -39,7 +40,10 @@ export const catalogRouter = router({
     if (!row.source.canonicalVerifiedAt || !row.source.canonicalVerifiedByUserId || !row.source.canonicalVerificationNote) throw new Error("An administrator must verify and attest to the canonical SPC, IFU, PI, or DFU document before source approval");
     const sourceBlocks = await db.select({ id: disclosureBlocks.id }).from(disclosureBlocks).where(eq(disclosureBlocks.sourceId, input.sourceId)).limit(1);
     if (!sourceBlocks.length) throw new Error("A patient-ready source must contain at least one curated canonical disclosure excerpt");
-    if (row.source.jurisdiction === "PL" && row.product.registryStatus !== "verified") throw new Error("Poland-ready consent use requires verified product registry evidence before source approval");
+    const catalogue = row.source.marketCatalogueProductId ? (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, row.source.marketCatalogueProductId)).limit(1))[0] : null;
+    const sourceForMarketGate = { ...row.source, registryIdentifier: row.source.registryIdentifier || row.product.registryIdentifier || (row.product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: row.source.registryVerifiedAt || (row.product.registryStatus === "verified" ? new Date() : null) };
+    const gate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, catalogue);
+    if (!gate.eligible) throw new Error(gate.message);
     await db.update(productSources).set({ reviewStatus: "approved", reviewedByUserId: ctx.user.id, reviewedAt: new Date() }).where(eq(productSources.id, input.sourceId));
     await db.update(products).set({ isActive: true }).where(eq(products.sourceId, input.sourceId));
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "source.approved", entityType: "productSource", entityId: String(input.sourceId), summary: "Product source approved for patient-ready consent use" });
@@ -70,6 +74,21 @@ export const catalogRouter = router({
     await db.update(productSources).set({ jurisdiction: input.jurisdiction, registryAuthority: input.registryAuthority, registryIdentifier: input.registryIdentifier, registryVerifiedAt: verifiedAt }).where(eq(productSources.id, product.sourceId));
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "product.registry_verified", entityType: "product", entityId: String(input.productId), summary: `${input.registryAuthority} registry evidence verified for product ${input.registryIdentifier}` });
     return { success: true, verifiedAt };
+  }),
+  recordMarketJurisdictionEvidence: protectedProcedure.input(z.union([
+    z.object({ catalogueProductId: z.number().int().positive(), market: z.literal("uk_gb"), ukMarketRoute: z.enum(["ukca", "ce_transitional", "not_applicable"]), ukMhRARegistrationIdentifier: z.string().min(2).max(160), ukMhRARegistrationUrl: optionalHttpsUrl, ukConformityCertificateUrl: optionalHttpsUrl, ukResponsiblePerson: z.string().max(200).optional() }),
+    z.object({ catalogueProductId: z.number().int().positive(), market: z.literal("usa"), fdaMarketingAuthorizationType: z.enum(["510k", "de_novo", "pma", "hde", "exempt", "not_applicable"]), fdaMarketingAuthorizationNumber: z.string().max(160).optional(), fdaRegistrationListingUrl: optionalHttpsUrl }),
+  ])).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const catalogue = (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, input.catalogueProductId)).limit(1))[0]; if (!catalogue) throw new Error("Catalogue record not found"); const verifiedAt = new Date();
+    if (input.market === "uk_gb") {
+      if (!input.ukMhRARegistrationUrl || !input.ukConformityCertificateUrl) throw new Error("Great Britain evidence requires HTTPS MHRA registration and conformity certificate URLs");
+      await db.update(marketCatalogueProducts).set({ ukMarketRoute: input.ukMarketRoute, ukMhRARegistrationIdentifier: input.ukMhRARegistrationIdentifier, ukMhRARegistrationUrl: input.ukMhRARegistrationUrl, ukConformityCertificateUrl: input.ukConformityCertificateUrl, ukResponsiblePerson: input.ukResponsiblePerson || null, ukEvidenceVerifiedAt: verifiedAt }).where(eq(marketCatalogueProducts.id, catalogue.id));
+    } else {
+      if (!input.fdaRegistrationListingUrl || (input.fdaMarketingAuthorizationType !== "exempt" && input.fdaMarketingAuthorizationType !== "not_applicable" && !input.fdaMarketingAuthorizationNumber)) throw new Error("USA evidence requires an HTTPS FDA registration/listing URL and a marketing-authorization number unless documented as exempt or not applicable");
+      await db.update(marketCatalogueProducts).set({ fdaMarketingAuthorizationType: input.fdaMarketingAuthorizationType, fdaMarketingAuthorizationNumber: input.fdaMarketingAuthorizationNumber || null, fdaRegistrationListingUrl: input.fdaRegistrationListingUrl, fdaEvidenceVerifiedAt: verifiedAt }).where(eq(marketCatalogueProducts.id, catalogue.id));
+    }
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: `catalogue.${input.market}_evidence_verified`, entityType: "marketCatalogueProduct", entityId: String(catalogue.id), summary: `${input.market === "uk_gb" ? "Great Britain MHRA/UKCA" : "USA FDA"} evidence recorded for ${catalogue.brandName}` }); return { success: true, verifiedAt };
   }),
   createProductSource: protectedProcedure.input(z.object({
     productName: z.string().min(2).max(160), manufacturer: z.string().min(2).max(160), category: z.enum(["neuromodulator", "ha_filler", "biostimulator", "other"]), activeIngredient: z.string().max(255).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), registryAuthority: z.string().max(160).optional(), registryIdentifier: z.string().max(160).optional(), documentTitle: z.string().min(3).max(255), documentUrl: z.string().url().refine(url => url.startsWith("https://"), "Canonical document URL must use HTTPS"), documentVersion: z.string().min(2).max(100), documentKind: z.enum(["spc", "ifu", "pi", "dfu"]), disclosures: z.array(sourceDisclosure).min(1),
@@ -153,31 +172,36 @@ export const catalogRouter = router({
     return blocks.filter(block => block.productId === input.productId && block.language === input.language && (block.scope === "product" || (block.scope === "area" && block.treatmentAreaKey === input.treatmentAreaKey)));
   }),
   sourceAudit: protectedProcedure.query(async ({ ctx }) => {
-    await requireAdmin(ctx.user);
+    const workspace = await requireAdmin(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
     const records = await db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id));
     const blocks = await db.select({ sourceId: disclosureBlocks.sourceId, id: disclosureBlocks.id }).from(disclosureBlocks);
+    const catalogueRecords = await db.select().from(marketCatalogueProducts);
     const sources = records.map(({ product, source }) => {
       const disclosureCount = blocks.filter(block => block.sourceId === source.id).length;
       const canonicalReady = Boolean(source.canonicalVerifiedAt && source.canonicalVerifiedByUserId && source.canonicalVerificationNote);
-      const registryReady = source.jurisdiction !== "PL" || product.registryStatus === "verified";
-      const eligibleForApproval = canonicalReady && registryReady && disclosureCount > 0;
-      return { sourceId: source.id, productId: product.id, productName: product.name, documentKind: source.documentKind, reviewStatus: source.reviewStatus, disclosureCount, canonicalReady, registryReady, eligibleForApproval };
+      const sourceForMarketGate = { ...source, registryIdentifier: source.registryIdentifier || product.registryIdentifier || (product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: source.registryVerifiedAt || (product.registryStatus === "verified" ? new Date() : null) };
+      const gate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, source.marketCatalogueProductId ? catalogueRecords.find(item => item.id === source.marketCatalogueProductId) : null);
+      const eligibleForApproval = canonicalReady && gate.eligible && disclosureCount > 0;
+      return { sourceId: source.id, productId: product.id, productName: product.name, documentKind: source.documentKind, reviewStatus: source.reviewStatus, disclosureCount, canonicalReady, registryReady: gate.eligible, marketGateCode: gate.code, marketGateMessage: gate.message, eligibleForApproval };
     });
     const disclosureBlockAudits = records.flatMap(({ product, source }) => {
       const canonicalReady = Boolean(source.canonicalVerifiedAt && source.canonicalVerifiedByUserId && source.canonicalVerificationNote);
-      const registryReady = source.jurisdiction !== "PL" || product.registryStatus === "verified";
+      const sourceForMarketGate = { ...source, registryIdentifier: source.registryIdentifier || product.registryIdentifier || (product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: source.registryVerifiedAt || (product.registryStatus === "verified" ? new Date() : null) };
+      const gate = getMarketEvidenceGate(workspace.clinic, sourceForMarketGate, source.marketCatalogueProductId ? catalogueRecords.find(item => item.id === source.marketCatalogueProductId) : null);
       return blocks.filter(block => block.sourceId === source.id).map(block => ({
         disclosureBlockId: block.id,
         sourceId: source.id,
         productId: product.id,
         productName: product.name,
         canonicalReady,
-        registryReady,
+        registryReady: gate.eligible,
+        marketGateCode: gate.code,
+        marketGateMessage: gate.message,
         sourceReviewStatus: source.reviewStatus,
-        eligibleForApproval: canonicalReady && registryReady,
-        patientReady: source.reviewStatus === "approved" && canonicalReady && registryReady,
+        eligibleForApproval: canonicalReady && gate.eligible,
+        patientReady: source.reviewStatus === "approved" && canonicalReady && gate.eligible,
       }));
     });
     return { sources, disclosureBlockAudits };

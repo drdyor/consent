@@ -132,3 +132,14 @@
 - [x] Add one-click copy and email-draft sharing actions for supplier capability links without storing a raw token.
 - [x] Build an overdue high-severity incident widget with controlled manual escalation and audit activity.
 - [x] Validate attachment access, token expiry, escalation transitions, sharing interactions, and desktop/mobile views.
+- [x] Research and document the jurisdiction boundary for Poland/EU, UK MHRA/UKCA, and USA FDA/state-specific evidence without representing the product as legal advice.
+- [x] Add clinic market profile, UKCA/MHRA, FDA authorization, and US state applicability fields to the governed compliance data model.
+- [x] Implement market-specific eligibility gates that block patient-ready use when the selected clinic market lacks its required evidence and administrator verification.
+- [x] Build a premium multi-jurisdiction selector and jurisdiction-aware source/product governance controls for Poland/EU, UK, and USA clinics.
+- [x] Add UK and USA evidence-gate regression coverage, clinic-scope validation, and desktop/mobile visual verification.
+- [ ] Define clinic escalation-contact, automated delivery, retry, opt-in, and audit governance for overdue high-severity incidents.
+- [ ] Add clinic escalation contacts, escalation delivery records, and document scan-status metadata to the data model.
+- [ ] Implement administrator-only escalation contact configuration and idempotent automated overdue-incident delivery.
+- [ ] Implement a malware-scanning acceptance gate that blocks unscanned or unsafe supporting documents from administrator download.
+- [ ] Build premium escalation contacts, delivery audit, and document scan-status controls in Supplier Governance.
+- [ ] Validate notification delivery idempotency, contact scope, scan gating, administrator download access, and responsive views.

@@ -26,7 +26,8 @@ describe("canonical source approval gate", () => {
     state.db = {
       select: vi.fn()
         .mockImplementationOnce(() => ({ from: () => ({ innerJoin: async () => [{ product, source }] }) }))
-        .mockImplementationOnce(() => ({ from: async () => [{ id: 4, sourceId: 8 }] })),
+        .mockImplementationOnce(() => ({ from: async () => [{ id: 4, sourceId: 8 }] }))
+        .mockImplementationOnce(() => ({ from: async () => [] })),
     };
 
     await expect(appRouter.createCaller(ctx as any).catalog.sourceAudit()).resolves.toEqual({
@@ -39,6 +40,8 @@ describe("canonical source approval gate", () => {
         disclosureCount: 1,
         canonicalReady: false,
         registryReady: true,
+        marketGateCode: "ready",
+        marketGateMessage: "Poland/EU registry evidence is present.",
         eligibleForApproval: false,
       }],
       disclosureBlockAudits: [{
@@ -48,6 +51,8 @@ describe("canonical source approval gate", () => {
         productName: "Example Product",
         canonicalReady: false,
         registryReady: true,
+        marketGateCode: "ready",
+        marketGateMessage: "Poland/EU registry evidence is present.",
         sourceReviewStatus: "pending",
         eligibleForApproval: false,
         patientReady: false,
