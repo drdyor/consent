@@ -1,0 +1,128 @@
+# Project TODO
+
+- [x] Define the consent, product-warning, anatomical-risk, patient, signature, practitioner, and audit-record data model with immutable signed snapshots.
+- [x] Source and store product warnings only from curated manufacturer SPC/IFU references, retaining document title, source URL, version identifier, and retrieved date.
+- [x] Create role-aware clinic navigation for owner/admin and practitioner users.
+- [x] Build the premium clinic dashboard with recent-record, pending-signature, and quick-action views.
+- [x] Build clinic and practitioner profile management, including a clinic logo reference for signed-document rendering.
+- [x] Build the consent template library for the five requested aesthetic procedures.
+- [x] Build product, anatomical-area, lot-number, and expiry-date capture with dynamic disclosure assembly from stored source data.
+- [x] Build patient-facing review with section acknowledgements and typed or drawn electronic-signature capture.
+- [x] Produce a version-locked, printable signed consent snapshot containing clinic and practitioner details.
+- [x] Build searchable consent records and audit trail filters for patient, date, procedure, product, practitioner, and signature status.
+- [x] Add automated tests for role permissions, disclosure assembly, signing immutability, and record filters.
+- [x] Visually verify desktop and mobile layouts, save a delivery checkpoint, and document remaining production considerations.
+- [x] Make guided consent creation a minimal sequence—product, treatment area, patient details, acknowledgement, signature—without requiring clinics to manually repeat curated product-risk text.
+- [x] Replace the initial manufacturer safety-page source records with canonical SPC, IFU, or prescribing-information documents and retain their title, version or date, URL, and retrieval timestamp.
+- [x] Add source-level review evidence so every disclosure block can be traced to a specific approved SPC/IFU document before it is available in a patient consent.
+- [x] Connect the sidebar, dashboard, and profile screens to protected workspace and consent data, with real loading, empty, and error states.
+- [x] Implement S3-backed clinic-logo upload and retain its URL in the clinic profile and signed snapshot.
+- [x] Verify signed snapshots include the resolved clinic, practitioner, and logo details used at the moment of signing.
+- [x] Preserve the full governance, source-control, traceability, signing, records, and permission capabilities while presenting practitioners with a focused guided workflow rather than a reduced product scope.
+- [x] Add administrator-only source and template controls, practitioner-focused form creation actions, and consistent protected-workspace loading and error states.
+- [x] Add a dedicated pending-signature list and multiple dashboard shortcuts that reflect live clinic data.
+- [x] Render the exact stored product and anatomical disclosure blocks in the assembled consent review, not only a disclosure-count summary.
+- [x] Verify the patient-facing consent carries the assembled source-linked disclosure text forward to its locked signing snapshot.
+- [x] Render the clinic logo in generated signed-consent PDF output.
+- [x] Add a searchable audit-event trail filtered by consent record, actor, and event date.
+- [x] Add a visible consent-record filter to the audit-event trail and bind it to the protected audit query.
+- [x] Extend audit-event filtering by patient, procedure, product, practitioner, and consent signature status, and test the query/UI wiring.
+- [x] Add protected audit-query tests for patient, procedure, product, practitioner, and signature-status filtering.
+- [x] Add a rendered audit-filter component test that verifies the expanded UI controls emit the complete query input.
+- [x] Verify that each expanded audit filter contributes to the protected query’s condition set and that the rendered audit controls expose the full filter set.
+- [x] Add interaction-level test coverage for each audit control’s emitted state and each protected audit filter’s query behavior.
+- [x] Reconcile Poland-first product scope and governing-market assumptions with verified current regulatory sources before relying on jurisdiction-specific consent content.
+- [x] Add jurisdiction, language, product-registry, prescriber-license, and regulatory-evidence fields to the compliance data model.
+- [x] Add Polish-first and bilingual Polish/English consent output with jurisdiction-specific template governance.
+- [x] Add UMKiL-compatible product registration evidence and block patient-ready consent use when required approval evidence is absent.
+- [x] Add anatomical injection-map, before/after photo, treatment-course, and per-product inventory-traceability workflows.
+- [x] Evaluate and plan the required migration from hosted web storage to a clinic-controlled local-first desktop deployment before asserting local-storage or UODO/GDPR positioning.
+- [x] Define Poland-aware web privacy, hosting, and data-processing controls without representing the current hosted application as local-first desktop software.
+- [x] Document the hosted-web versus local-first deployment decision, associated privacy/data-processing controls, and remaining clinic governance responsibilities in project documentation.
+- [x] Add a phased hosted-web-to-local-first migration assessment covering records, signatures, storage references, authentication, backups, audit evidence, blockers, and non-goals.
+- [x] Verify protected-workspace loading, empty, and error states across the dashboard, templates, consent creator, records, and profile screens.
+- [x] Add an interactive facial treatment map for documenting treatment areas, injection points, product, units or volume, lot, expiry, practitioner, and clinical notes.
+- [x] Persist treatment-map entries per consent and include the treatment map in signed records, audit events, and PDF output.
+- [x] Show the bound practitioner identity and product expiry in the facial treatment-map workspace, and test treatment-map documentation completeness.
+- [x] Prove that treatment-map entries are immutably bound to their consent’s practitioner, product lot, and expiry context in the locked record.
+- [x] Test treatment-map retention of product, quantity and measure, lot, expiry, practitioner, and clinical note data.
+- [x] Add a signing-route integration test that proves the database treatment-map payload is assembled and locked with its product, lot, expiry, practitioner, quantity, and clinical note context.
+- [x] Verify that the treatment-map view’s product, lot, expiry, and practitioner context matches the same consent’s locked signed-record context.
+- [x] Add a visible inventory-lot register, allow consent creation to select a recorded lot, and test inventory creation/retrieval and selected-lot traceability.
+- [x] Persist the selected inventory-lot reference on consent records, include it in locked snapshots, and display it in review/record views.
+- [x] Add an end-to-end test for selected inventory-lot linkage from consent creation through the locked snapshot.
+- [x] Add a mixed-disclosure integration test proving product and anatomy filtering returns only applicable source blocks.
+- [x] Add a top-level protected loading state to Templates and verify sidebar workspace-state handling.
+- [x] Extend Polish/English language handling to signed PDF export and jurisdiction-specific template governance.
+- [x] Complete Polish localization for remaining patient-facing status, disclosure, fallback, and treatment-map wording.
+- [x] Add explicit governed-template, source-record, and disclosure empty states to Templates and CreateConsent.
+- [x] Add language-aware governance for product sources and disclosure content across consent creation, patient review, signing, and PDF output.
+- [x] Add missing protected subquery loading/error states for dashboard pending signatures and records audit activity.
+- [x] Localize the remaining signed-PDF signer-method and treatment-map measure values for Polish consent output.
+- [x] Add regression coverage for Polish-governed consent/PDF output values and language-matched source blocks.
+- [x] Test the signed-PDF export path with Polish signer-method and treatment-map measure labels.
+- [x] Recreate curated disclosure blocks from verified canonical Polish SPC/IFU excerpts while retaining the administrator approval and registry-verification gate.
+- [x] Record and verify an explicit retrieval timestamp for each replaced canonical source record.
+- [x] Expand the documented Poland-market reconciliation across the clinic’s intended product scope beyond the Botox seed record.
+- [x] Enforce canonical document type and administrator verification before a product source can be approved for patient-ready use.
+- [x] Extend Poland-market reconciliation to each planned product category: neuromodulators, HA fillers, biostimulators, and other injectable devices.
+- [x] Record a named administrator verification note and user reference on every canonical source before approval.
+- [x] Audit every stored disclosure block for a canonical approved source reference before production reliance.
+- [x] Require a human-entered administrator attestation note in the source-library verification control before canonical-source verification is recorded.
+- [x] Add a governed source-audit endpoint and test that reports every disclosure block’s canonical, registry, and approval eligibility without enabling pending sources.
+- [x] Return individual disclosure-block audit rows with canonical, registry, and patient-ready eligibility state.
+- [x] Add per-disclosure regression coverage proving pending source blocks remain non-eligible for patient-ready consent use.
+- [x] Define the EU product-catalogue scope, product classes, evidence hierarchy, and exclusions for consent and future distribution research.
+- [x] Research representative high-visibility EU aesthetic products, including Lemon Bottle, using official manufacturer and regulator evidence rather than marketplace claims.
+- [x] Capture an auditable catalogue record for each researched product: classification, jurisdiction, language, canonical evidence, identifier, source status, and distribution-readiness gaps.
+- [x] Design catalogue fields and workflows that support consent sourcing now and a future supply/distribution catalogue without enabling unverified products for clinical use.
+- [x] Implement and validate the governed EU product-catalogue enhancements.
+- [x] Apply a premium, clinically appropriate glass-and-depth visual system to the catalogue and shared workspace shell without compromising accessibility or information density.
+- [x] Recompose catalogue cards, evidence states, controls, and data tables as high-trust editorial product surfaces rather than generic dashboard panels.
+- [x] Apply the premium editorial visual treatment to existing table-like source-library and inventory data surfaces so they match the catalogue’s high-trust design language.
+- [x] Add visual regression evidence for premium table treatment across catalogue and source-administration surfaces.
+- [x] Add durable visual-surface contract coverage for the premium catalogue, source register, and inventory ledger.
+- [x] Record durable visual baselines for the premium catalogue and source-library surfaces outside the deploy bundle.
+- [x] Add a rendered-page regression test for the premium EU catalogue beyond visual class contracts.
+- [x] Add checked-in baseline artifacts for the premium catalogue, source register, and inventory ledger visual states.
+- [x] Add authorised-distributor evidence, UDI/CE evidence, and supplier-diligence review fields to the EU market catalogue.
+- [x] Build a restricted administrator promotion workflow from a curation-ready catalogue record into a pending clinic source and product record.
+- [x] Ensure catalogue promotion preserves canonical-source, registry, language, disclosure, and administrator-approval gates before patient-ready use.
+- [x] Implement a read-only, exportable source-audit report for compliance review with per-disclosure eligibility evidence.
+- [x] Add governance, promotion, and report-export test coverage and visual validation.
+- [x] Keep products created by catalogue promotion inactive until the linked source receives final clinic approval.
+- [x] Add secure, administrator-only uploads for distributor authorisations and CE certificates linked to supplier evidence records.
+- [x] Add evidence expiry dates, reminder thresholds, delivery status, and auditable reminder records for certificates, IFUs, and distributor appointments.
+- [x] Implement a durable daily automated evidence-expiry scan with idempotent reminder handling.
+- [x] Add disabled-by-default external reminder-delivery settings and recipient controls without requiring credentials for the in-app reminder workflow.
+- [x] Add supplier purchase orders and reconcile each received order to clinic inventory lots and their source products.
+- [x] Build a premium reconciliation dashboard for supplier, purchase-order, product, lot, quantity, and mismatch states.
+- [x] Validate upload access control, expiry reminder processing, order-to-lot reconciliation, and responsive views.
+- [x] Add per-document reminder threshold and reminder-status metadata, capture it at upload, and apply it in the expiry scan.
+- [x] Add a received and partially-received purchase-order workflow with explicit received-line reconciliation.
+- [x] Persist line-level matched, unmatched, and mismatch status with reconciliation notes, and surface those durable states in the dashboard.
+- [x] Define controlled supplier performance and incident governance, including severity, ownership, due dates, and immutable audit activity.
+- [x] Add clinic-scoped supplier performance review and supplier incident tables linked to market catalogue records and optional purchase orders.
+- [x] Implement administrator-only supplier performance and incident creation, review, resolution, and audit procedures.
+- [x] Build a premium supplier performance and incident review panel with open-risk, response-due, and resolved states.
+- [x] Validate clinic scope, administrator access, performance calculations, incident transitions, and desktop/mobile views.
+- [x] Restrict supplier performance and incident review data to clinic administrators and prove the access rule.
+- [x] Add explicit open-risk, response-due, and resolved incident review states to the supplier governance interface.
+- [x] Add regression coverage for supplier review/incident clinic scope, admin access, and required resolution notes on status transitions.
+- [x] Add router-level tests that block supplier performance and incident reads or mutations outside the current clinic scope.
+- [x] Add an incident-update integration test proving mitigate and close transitions require a resolution note end to end.
+- [x] Add router-level summary tests proving supplier performance and incident reads remain scoped to the current clinic.
+- [x] Add an incident-update integration test proving a closed supplier incident is rejected without a resolution note.
+- [x] Define secure supplier corrective-action request, expiry, response, revocation, and administrator-review controls.
+- [x] Add clinic-scoped corrective-action request records linked to supplier incidents, using hashed capability tokens rather than stored raw tokens.
+- [x] Implement administrator-only request issuance and revocation plus public token-based supplier request review and response submission.
+- [x] Build a controlled supplier response page and administrator request controls within the Supplier Governance workspace.
+- [x] Add clinic-admin audit-pack CSV and print-ready PDF exports for supplier performance, incidents, and corrective-action responses.
+- [x] Validate token secrecy and expiry, clinic scope, request lifecycle, export content, and desktop/mobile views.
+- [x] Reduce dark-background body copy and replace dense dark panels with lighter, high-legibility premium operational surfaces.
+- [x] Refine hierarchy, typography, contrast, and status semantics across the Supplier Governance workspace for a premium paid-clinic experience.
+- [x] Visually validate the refined supplier governance workspace at desktop and mobile widths.
+- [x] Add integration coverage for corrective-action issuance, revocation, public supplier response, expiry/revoked blocking, clinic scoping, and audit-pack data content.
+- [x] Apply consistent high-legibility hierarchy and status semantics across all Supplier Governance panels, not only the hero and access boundary.
+- [x] Re-verify the complete refined Supplier Governance workspace at desktop and mobile widths.
+- [ ] Push the validated completed project to the selected drdyor/consent repository.

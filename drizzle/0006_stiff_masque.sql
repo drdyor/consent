@@ -1,0 +1,2 @@
+ALTER TABLE `consentRecords` ADD `inventoryLotId` int;--> statement-breakpoint
+ALTER TABLE `consentRecords` ADD CONSTRAINT `consentRecords_inventoryLotId_productInventoryLots_id_fk` FOREIGN KEY (`inventoryLotId`) REFERENCES `productInventoryLots`(`id`) ON DELETE no action ON UPDATE no action;
