@@ -148,6 +148,13 @@
       "when": 1787314372665,
       "tag": "0020_small_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1787315812402,
+      "tag": "0021_clammy_kingpin",
+      "breakpoints": true
     }
   ]
 }

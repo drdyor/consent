@@ -1,14 +1,15 @@
 import { and, desc, eq, gte, like, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, clinics, consentAcknowledgements, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
+import { auditEvents, clinics, consentAcknowledgements, consentNotarySettings, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
-import { requireWorkspace } from "../services/workspace";
+import { requireAdmin, requireWorkspace } from "../services/workspace";
 import { buildSignedSnapshot, hasAllRequiredAcknowledgements } from "../services/consentSnapshot";
 import { bindTreatmentMapForSigning } from "../services/treatmentMapSnapshot";
 import { buildTreatmentMapConsentContext } from "../../shared/treatmentMapContext";
 import { getMarketEvidenceGate } from "../services/marketCompliance";
+import { buildWithdrawalEventHash, notarizeSnapshotHash, verifyNotarizedSnapshot } from "../services/consentNotary";
 
 const consentInput = z.object({
   templateId: z.number().int().positive(), productId: z.number().int().positive(), inventoryLotId: z.number().int().positive().optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
@@ -133,6 +134,31 @@ export const consentRouter = router({
     if (input?.dateTo) filters.push(lte(auditEvents.createdAt, input.dateTo));
     return db.select({ event: auditEvents, actor: users, record: consentRecords, product: products, practitioner: practitionerProfiles }).from(auditEvents).leftJoin(users, eq(auditEvents.actorUserId, users.id)).leftJoin(consentRecords, eq(auditEvents.consentRecordId, consentRecords.id)).leftJoin(products, eq(consentRecords.productId, products.id)).leftJoin(practitionerProfiles, and(eq(practitionerProfiles.userId, consentRecords.practitionerUserId), eq(practitionerProfiles.clinicId, consentRecords.clinicId))).where(and(...filters)).orderBy(desc(auditEvents.createdAt)).limit(100);
   }),
+  notarySettings: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    return (await db.select().from(consentNotarySettings).where(eq(consentNotarySettings.clinicId, workspace.clinic.id)).limit(1))[0] || null;
+  }),
+  saveNotarySettings: protectedProcedure.input(z.object({ enabled: z.boolean(), topicId: z.string().regex(/^\d+\.\d+\.\d+$/, "Hedera topic must use 0.0.123-style notation").optional() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    if (input.enabled && !input.topicId) throw new Error("A Hedera testnet topic ID is required before notarization can be enabled");
+    const existing = (await db.select().from(consentNotarySettings).where(eq(consentNotarySettings.clinicId, workspace.clinic.id)).limit(1))[0]; const values = { enabled: input.enabled, topicId: input.topicId || null, updatedByUserId: ctx.user.id };
+    if (existing) await db.update(consentNotarySettings).set(values).where(eq(consentNotarySettings.id, existing.id)); else await db.insert(consentNotarySettings).values({ clinicId: workspace.clinic.id, network: "testnet", ...values });
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "consent.notary_settings_updated", entityType: "consentNotarySettings", entityId: String(workspace.clinic.id), summary: input.enabled ? "Hedera testnet notarization enabled for this clinic topic" : "Hedera notarization disabled for this clinic" }); return { success: true };
+  }),
+  withdraw: protectedProcedure.input(z.object({ recordId: z.number().int().positive(), reason: z.string().min(10).max(2000) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireWorkspace(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const record = (await db.select().from(consentRecords).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1))[0];
+    if (!record) throw new Error("Consent record not found"); if (record.status !== "signed" || !record.signedSnapshot || !record.snapshotHash) throw new Error("Only a signed consent with an immutable snapshot may be withdrawn");
+    const previous = (await db.select({ eventHash: auditEvents.eventHash }).from(auditEvents).where(and(eq(auditEvents.clinicId, workspace.clinic.id), eq(auditEvents.consentRecordId, record.id))).orderBy(desc(auditEvents.createdAt)).limit(1))[0]; const withdrawnAt = new Date(); const eventHash = buildWithdrawalEventHash({ previousEventHash: previous?.eventHash || record.snapshotHash, consentRecordId: record.id, snapshotHash: record.snapshotHash, reason: input.reason.trim(), occurredAt: withdrawnAt, actorUserId: ctx.user.id });
+    await db.update(consentRecords).set({ status: "voided", withdrawnAt, withdrawnByUserId: ctx.user.id, withdrawalReason: input.reason.trim(), withdrawalEventHash: eventHash }).where(and(eq(consentRecords.id, record.id), eq(consentRecords.status, "signed")));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: record.id, actorUserId: ctx.user.id, action: "consent.withdrawn", entityType: "consentWithdrawal", entityId: String(record.id), summary: `Signed consent withdrawn: ${input.reason.trim()}`, previousEventHash: previous?.eventHash || record.snapshotHash, eventHash }); return { success: true, status: "voided" as const, withdrawnAt, withdrawalEventHash: eventHash };
+  }),
+  verifyNotary: protectedProcedure.input(z.object({ recordId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const workspace = await requireWorkspace(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const record = (await db.select().from(consentRecords).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1))[0]; if (!record) throw new Error("Consent record not found"); return verifyNotarizedSnapshot({ signedSnapshot: record.signedSnapshot, snapshotHash: record.snapshotHash, topicId: record.notaryTopicId, sequenceNumber: record.notarySequenceNumber });
+  }),
+  retryNotarization: protectedProcedure.input(z.object({ recordId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); return attemptConsentNotarization({ clinicId: workspace.clinic.id, consentRecordId: input.recordId, actorUserId: ctx.user.id });
+  }),
   create: protectedProcedure.input(consentInput).mutation(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user);
     const db = await getDb();
@@ -193,6 +219,21 @@ export const consentRouter = router({
       await tx.update(consentRecords).set({ status: "signed", signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, signedSnapshot: snapshot, snapshotHash }).where(and(eq(consentRecords.id, row.record.id), eq(consentRecords.status, "sent")));
       await tx.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, action: "consent.signed", entityType: "consentRecord", entityId: String(row.record.id), summary: `Consent signed by ${input.signerName}` });
     });
-    return { success: true, signedAt, snapshotHash };
+    const notary = await attemptConsentNotarization({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, signedSnapshot: snapshot, snapshotHash });
+    return { success: true, signedAt, snapshotHash, notaryStatus: notary.status };
   }),
 });
+
+export async function attemptConsentNotarization(input: { clinicId: number; consentRecordId: number; actorUserId: number; signedSnapshot?: unknown; snapshotHash?: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const record = (await db.select().from(consentRecords).where(and(eq(consentRecords.id, input.consentRecordId), eq(consentRecords.clinicId, input.clinicId))).limit(1))[0];
+  if (!record || record.status !== "signed" || !record.snapshotHash || !record.signedSnapshot) throw new Error("Only a signed consent with an immutable snapshot may be notarized");
+  const settings = (await db.select().from(consentNotarySettings).where(eq(consentNotarySettings.clinicId, input.clinicId)).limit(1))[0];
+  const snapshotHash = input.snapshotHash || record.snapshotHash; const result = await notarizeSnapshotHash({ topicId: settings?.enabled ? settings.topicId : null, snapshotHash }); const attemptedAt = new Date(); const attemptCount = (record.notaryAttemptCount || 0) + 1;
+  if (result.status === "notarized") {
+    await db.update(consentRecords).set({ notaryStatus: "notarized", notaryTopicId: result.reference.topicId, notarySequenceNumber: result.reference.sequenceNumber, notaryTransactionId: result.reference.transactionId, notaryConsensusTimestamp: result.reference.consensusTimestamp, notaryAttemptCount: attemptCount, notaryLastAttemptAt: attemptedAt, notaryError: null }).where(eq(consentRecords.id, record.id));
+    await db.insert(auditEvents).values({ clinicId: input.clinicId, consentRecordId: record.id, actorUserId: input.actorUserId, action: "consent.notarized", entityType: "consentRecord", entityId: String(record.id), summary: `Snapshot hash notarized on Hedera topic ${result.reference.topicId} at sequence ${result.reference.sequenceNumber}` }); return result;
+  }
+  await db.update(consentRecords).set({ notaryStatus: "notary_pending", notaryAttemptCount: attemptCount, notaryLastAttemptAt: attemptedAt, notaryError: result.error }).where(eq(consentRecords.id, record.id));
+  await db.insert(auditEvents).values({ clinicId: input.clinicId, consentRecordId: record.id, actorUserId: input.actorUserId, action: "consent.notary_pending", entityType: "consentRecord", entityId: String(record.id), summary: `Snapshot notarization pending: ${result.error}` }); return result;
+}

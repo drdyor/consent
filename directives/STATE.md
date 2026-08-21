@@ -1,6 +1,6 @@
 # Aegis Consent — directive queue state
 
-**Current window:** WINDOW_C1 — `WINDOW_C1_WITHDRAWAL_NOTARY.md`
+**Current window:** WINDOW_C2 — `WINDOW_C2_PATIENT_SIGNING.md`
 **On completion:** update this file to point at the next window, then proceed.
 
 Read `HANDOVER_AEGIS_CONSENT.md` first. This queue exists to use the Manus free window
@@ -25,3 +25,4 @@ not wasted even if Eva later folds Aegis into Vitalis.
 
 ## Log
 - 2026-08-21: queue created (Claude, operator "max Manus before 08-24"). WINDOW_C1 handed over.
+- 2026-08-21: WINDOW_C1 completed (Manus). Added append-only hash-chained signed-consent withdrawal, retryable Hedera testnet notary adapter and Mirror Node verification, protected status controls, migration 0021, report, and behavioral tests. No live Hedera credentials or real data used. WINDOW_C2 handed over.

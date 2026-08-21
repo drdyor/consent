@@ -276,6 +276,18 @@ export const consentRecords = mysqlTable("consentRecords", {
   signedSnapshot: json("signedSnapshot"),
   snapshotHash: varchar("snapshotHash", { length: 128 }),
   renderedPdfUrl: text("renderedPdfUrl"),
+  withdrawnAt: timestamp("withdrawnAt"),
+  withdrawnByUserId: int("withdrawnByUserId").references(() => users.id),
+  withdrawalReason: text("withdrawalReason"),
+  withdrawalEventHash: varchar("withdrawalEventHash", { length: 128 }),
+  notaryStatus: mysqlEnum("notaryStatus", ["not_applicable", "notary_pending", "notarized", "notary_failed"]).default("not_applicable").notNull(),
+  notaryTopicId: varchar("notaryTopicId", { length: 96 }),
+  notarySequenceNumber: varchar("notarySequenceNumber", { length: 64 }),
+  notaryTransactionId: varchar("notaryTransactionId", { length: 180 }),
+  notaryConsensusTimestamp: varchar("notaryConsensusTimestamp", { length: 64 }),
+  notaryAttemptCount: int("notaryAttemptCount").default(0).notNull(),
+  notaryLastAttemptAt: timestamp("notaryLastAttemptAt"),
+  notaryError: text("notaryError"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [
@@ -525,12 +537,25 @@ export const auditEvents = mysqlTable("auditEvents", {
   entityType: varchar("entityType", { length: 120 }).notNull(),
   entityId: varchar("entityId", { length: 100 }).notNull(),
   summary: text("summary").notNull(),
+  previousEventHash: varchar("previousEventHash", { length: 128 }),
+  eventHash: varchar("eventHash", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [
   index("audit_clinic_idx").on(table.clinicId),
   index("audit_record_idx").on(table.consentRecordId),
   index("audit_event_idx").on(table.createdAt),
 ]);
+
+export const consentNotarySettings = mysqlTable("consentNotarySettings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  enabled: boolean("enabled").default(false).notNull(),
+  network: mysqlEnum("network", ["testnet"]).default("testnet").notNull(),
+  topicId: varchar("topicId", { length: 96 }),
+  updatedByUserId: int("updatedByUserId").references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("consent_notary_clinic_unique").on(table.clinicId)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
