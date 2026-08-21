@@ -10,7 +10,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
 import { and, eq } from "drizzle-orm";
-import { supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
+import { supplierCorrectiveActionDocuments, supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { requireAdmin } from "../services/workspace";
 import { runEvidenceExpiryScan } from "../routers/supplierOps";
@@ -56,6 +56,22 @@ async function startServer() {
       return res.redirect(307, await storageGetSignedUrl(document.storageKey));
     } catch (error) {
       console.error("[SupplierEvidence] download failed", error);
+      return res.status(403).send("Administrator authorization required");
+    }
+  });
+  app.get("/api/supplier-corrective-document/:documentId/download", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      const workspace = await requireAdmin(user);
+      const documentId = Number(req.params.documentId);
+      if (!Number.isInteger(documentId) || documentId < 1) return res.status(400).send("Invalid supporting document");
+      const db = await getDb();
+      if (!db) return res.status(503).send("Database unavailable");
+      const document = (await db.select().from(supplierCorrectiveActionDocuments).where(and(eq(supplierCorrectiveActionDocuments.id, documentId), eq(supplierCorrectiveActionDocuments.clinicId, workspace.clinic.id))).limit(1))[0];
+      if (!document) return res.status(404).send("Supporting document not found");
+      return res.redirect(307, await storageGetSignedUrl(document.storageKey));
+    } catch (error) {
+      console.error("[SupplierCorrectiveAction] document download failed", error);
       return res.status(403).send("Administrator authorization required");
     }
   });

@@ -370,6 +370,9 @@ export const supplierIncidents = mysqlTable("supplierIncidents", {
   dueAt: timestamp("dueAt"),
   resolutionNote: text("resolutionNote"),
   resolvedAt: timestamp("resolvedAt"),
+  escalationNote: text("escalationNote"),
+  escalatedAt: timestamp("escalatedAt"),
+  escalatedByUserId: int("escalatedByUserId").references(() => users.id),
   createdByUserId: int("createdByUserId").notNull().references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -395,6 +398,19 @@ export const supplierCorrectiveActions = mysqlTable("supplierCorrectiveActions",
   requestedByUserId: int("requestedByUserId").notNull().references(() => users.id),
   requestedAt: timestamp("requestedAt").defaultNow().notNull(),
 }, table => [uniqueIndex("supplier_corrective_token_unique").on(table.tokenHash), index("supplier_corrective_clinic_status_idx").on(table.clinicId, table.status), index("supplier_corrective_incident_idx").on(table.supplierIncidentId), index("supplier_corrective_expiry_idx").on(table.expiresAt)]);
+
+export const supplierCorrectiveActionDocuments = mysqlTable("supplierCorrectiveActionDocuments", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  supplierCorrectiveActionId: int("supplierCorrectiveActionId").notNull().references(() => supplierCorrectiveActions.id),
+  storageKey: varchar("storageKey", { length: 500 }).notNull(),
+  documentUrl: text("documentUrl").notNull(),
+  originalFilename: varchar("originalFilename", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 120 }).notNull(),
+  sizeBytes: int("sizeBytes").notNull(),
+  uploadedBy: mysqlEnum("uploadedBy", ["supplier", "administrator"]).default("supplier").notNull(),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+}, table => [index("supplier_corrective_document_action_idx").on(table.supplierCorrectiveActionId), index("supplier_corrective_document_clinic_idx").on(table.clinicId)]);
 
 export const productInventoryLots = mysqlTable("productInventoryLots", {
   id: int("id").autoincrement().primaryKey(),

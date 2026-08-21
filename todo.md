@@ -126,3 +126,9 @@
 - [x] Apply consistent high-legibility hierarchy and status semantics across all Supplier Governance panels, not only the hero and access boundary.
 - [x] Re-verify the complete refined Supplier Governance workspace at desktop and mobile widths.
 - [x] Push the validated completed project to the selected drdyor/consent repository.
+- [x] Define supporting-document upload, administrator-only retrieval, share-link, and high-severity escalation governance.
+- [x] Add corrective-action response-document records and durable incident escalation metadata with clinic scope.
+- [x] Implement secure supporting-document upload through a valid supplier capability token and authenticated administrator document retrieval.
+- [x] Add one-click copy and email-draft sharing actions for supplier capability links without storing a raw token.
+- [x] Build an overdue high-severity incident widget with controlled manual escalation and audit activity.
+- [x] Validate attachment access, token expiry, escalation transitions, sharing interactions, and desktop/mobile views.
