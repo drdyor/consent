@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ workspace: { clinic: { id: 4 }, membership: { role: "admin" } }, rejectAdmin: false, insertedReminders: [] as any[], updates: [] as any[], settings: { id: 2, clinicId: 4, reminderDays: 30, externalDeliveryEnabled: false, deliveryChannel: "none" }, documents: [{ id: 19, clinicId: 4, marketCatalogueProductId: 7, documentType: "ce_certificate", expiresAt: new Date("2026-09-01T00:00:00.000Z"), reminderThresholdDays: 30 }], incidents: [{ id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null }], summaryReviews: [] as any[], summaryIncidents: [] as any[], existingReminders: [] as any[] }));
+const state = vi.hoisted(() => ({ workspace: { clinic: { id: 4 }, membership: { role: "admin" } }, rejectAdmin: false, insertedReminders: [] as any[], insertedCorrectiveActions: [] as any[], updates: [] as any[], settings: { id: 2, clinicId: 4, reminderDays: 30, externalDeliveryEnabled: false, deliveryChannel: "none" }, documents: [{ id: 19, clinicId: 4, marketCatalogueProductId: 7, documentType: "ce_certificate", expiresAt: new Date("2026-09-01T00:00:00.000Z"), reminderThresholdDays: 30 }], incidents: [{ id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null }], correctiveActions: [{ id: 801, clinicId: 4, supplierIncidentId: 501, status: "issued", expiresAt: new Date("2099-09-01T00:00:00.000Z") }], summaryReviews: [] as any[], summaryIncidents: [] as any[], summaryCorrectiveActions: [] as any[], existingReminders: [] as any[] }));
 
 vi.mock("../db", () => ({ getDb: vi.fn(async () => ({
   select: vi.fn((shape?: any) => ({ from: (table: any) => {
     const name = table?.[Symbol.for("drizzle:Name")];
-    const rows = name === "supplierReminderSettings" ? [state.settings] : name === "supplierEvidenceDocuments" ? state.documents : name === "supplierEvidenceReminders" ? state.existingReminders : name === "supplierPerformanceReviews" ? state.summaryReviews : name === "supplierIncidents" ? shape ? state.summaryIncidents : state.incidents : name === "productInventoryLots" ? [{ id: 31, clinicId: 4, productId: 8, lotNumber: "LOT-08", quantity: "1.00" }] : name === "supplierPurchaseOrderLines" ? [{ id: 41, purchaseOrderId: 9, productId: 8, expectedQuantity: "1.00", receivedQuantity: "1.00", expectedLotNumber: "LOT-08" }] : name === "supplierPurchaseOrders" ? [{ id: 9, clinicId: 4 }] : [];
+    const rows = name === "supplierReminderSettings" ? [state.settings] : name === "supplierEvidenceDocuments" ? state.documents : name === "supplierEvidenceReminders" ? state.existingReminders : name === "supplierPerformanceReviews" ? state.summaryReviews : name === "supplierIncidents" ? shape ? state.summaryIncidents : state.incidents : name === "supplierCorrectiveActions" ? shape ? state.summaryCorrectiveActions : state.correctiveActions : name === "productInventoryLots" ? [{ id: 31, clinicId: 4, productId: 8, lotNumber: "LOT-08", quantity: "1.00" }] : name === "supplierPurchaseOrderLines" ? [{ id: 41, purchaseOrderId: 9, productId: 8, expectedQuantity: "1.00", receivedQuantity: "1.00", expectedLotNumber: "LOT-08" }] : name === "supplierPurchaseOrders" ? [{ id: 9, clinicId: 4 }] : [];
     const chain = { limit: async () => rows, then: (resolve: (value: any[]) => unknown) => Promise.resolve(rows).then(resolve) };
-    return { where: () => chain, innerJoin: () => ({ where: () => chain }) };
+    const joinChain = { where: () => chain, innerJoin: () => joinChain };
+    return { where: () => chain, innerJoin: () => joinChain };
   } })),
-  insert: vi.fn((table: any) => ({ values: async (values: any) => { if (table?.[Symbol.for("drizzle:Name")] === "supplierEvidenceReminders") { state.insertedReminders.push(values); state.existingReminders.push(values); } return { $returningId: async () => [{ id: 77 }] }; } })),
+  insert: vi.fn((table: any) => ({ values: (values: any) => { const name = table?.[Symbol.for("drizzle:Name")]; if (name === "supplierEvidenceReminders") { state.insertedReminders.push(values); state.existingReminders.push(values); } if (name === "supplierCorrectiveActions") state.insertedCorrectiveActions.push(values); return { $returningId: async () => [{ id: 77 }] }; } })),
   update: vi.fn(() => ({ set: (values: any) => ({ where: async () => state.updates.push(values) }) })),
 } )) }));
 vi.mock("../services/workspace", () => ({ requireWorkspace: vi.fn(async () => state.workspace), requireAdmin: vi.fn(async () => { if (state.rejectAdmin) throw new Error("Administrator permissions are required"); return state.workspace; }) }));
@@ -78,5 +79,28 @@ describe("supplier evidence and reconciliation governance", () => {
     await expect(appRouter.createCaller(ctx as any).supplierOps.updateSupplierIncident({ incidentId: 501, status: "mitigated" })).rejects.toThrow("resolution note");
     await expect(appRouter.createCaller(ctx as any).supplierOps.updateSupplierIncident({ incidentId: 501, status: "closed" })).rejects.toThrow("resolution note");
     await expect(appRouter.createCaller(ctx as any).supplierOps.updateSupplierIncident({ incidentId: 501, status: "closed", resolutionNote: "Supplier provided a valid replacement certificate" })).resolves.toEqual({ success: true });
+  });
+
+  it("issues a clinic-scoped corrective action while storing only a token hash", async () => {
+    state.insertedCorrectiveActions.length = 0;
+    const result = await appRouter.createCaller(ctx as any).supplierOps.issueCorrectiveAction({ supplierIncidentId: 501, contactName: "Supplier quality lead", contactEmail: "quality@supplier.example", requestMessage: "Provide the replacement certificate and corrective-action plan for this evidence gap.", expiresAt: new Date("2099-09-01T00:00:00.000Z") });
+    expect(result.token).toBeTruthy(); expect(state.insertedCorrectiveActions[0]).toMatchObject({ clinicId: 4, supplierIncidentId: 501, contactName: "Supplier quality lead" }); expect(state.insertedCorrectiveActions[0].tokenHash).toMatch(/^[a-f0-9]{64}$/); expect(state.insertedCorrectiveActions[0].tokenHash).not.toBe(result.token);
+  });
+
+  it("allows lifecycle controls only within the current clinic and blocks expired supplier response capability", async () => {
+    state.updates.length = 0;
+    await expect(appRouter.createCaller(ctx as any).supplierOps.revokeCorrectiveAction({ correctiveActionId: 801 })).resolves.toEqual({ success: true }); expect(state.updates).toContainEqual(expect.objectContaining({ status: "revoked" }));
+    await expect(appRouter.createCaller(ctx as any).supplierOps.respondToCorrectiveAction({ token: "secure-token-value-that-is-long-enough-for-validation", response: "We have replaced the certificate and attached the current appointment evidence." })).resolves.toEqual({ success: true }); expect(state.updates).toContainEqual(expect.objectContaining({ status: "responded" }));
+    state.correctiveActions[0].expiresAt = new Date("2000-01-01T00:00:00.000Z");
+    await expect(appRouter.createCaller(ctx as any).supplierOps.respondToCorrectiveAction({ token: "secure-token-value-that-is-long-enough-for-validation", response: "This response should be blocked because the request has expired." })).rejects.toThrow("expired");
+    state.correctiveActions[0].expiresAt = new Date("2099-09-01T00:00:00.000Z");
+  });
+
+  it("exports only current-clinic supplier performance, incident, and corrective-action rows in the audit pack", async () => {
+    state.summaryReviews.splice(0, state.summaryReviews.length, { review: { id: 901, clinicId: 4 }, catalogue: { brandName: "Clinic supplier" } }, { review: { id: 902, clinicId: 99 }, catalogue: { brandName: "Foreign supplier" } });
+    state.summaryIncidents.splice(0, state.summaryIncidents.length, { incident: { id: 911, clinicId: 4 }, catalogue: { brandName: "Clinic supplier" } }, { incident: { id: 912, clinicId: 99 }, catalogue: { brandName: "Foreign supplier" } });
+    state.summaryCorrectiveActions.splice(0, state.summaryCorrectiveActions.length, { action: { id: 921, clinicId: 4 }, incident: { id: 911, clinicId: 4 }, catalogue: { brandName: "Clinic supplier" } }, { action: { id: 922, clinicId: 99 }, incident: { id: 912, clinicId: 99 }, catalogue: { brandName: "Foreign supplier" } });
+    const pack = await appRouter.createCaller(ctx as any).supplierOps.auditPack(); expect(pack.reviews.map(item => item.review.id)).toEqual([901]); expect(pack.incidents.map(item => item.incident.id)).toEqual([911]); expect(pack.correctiveActions.map(item => item.action.id)).toEqual([921]);
+    state.summaryReviews.length = 0; state.summaryIncidents.length = 0; state.summaryCorrectiveActions.length = 0;
   });
 });

@@ -1,12 +1,13 @@
 import { and, eq, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, marketCatalogueProducts, productInventoryLots, products, supplierEvidenceDocuments, supplierEvidenceReminders, supplierIncidents, supplierPerformanceReviews, supplierPurchaseOrderLines, supplierPurchaseOrders, supplierReminderSettings } from "../../drizzle/schema";
+import { auditEvents, marketCatalogueProducts, productInventoryLots, products, supplierCorrectiveActions, supplierEvidenceDocuments, supplierEvidenceReminders, supplierIncidents, supplierPerformanceReviews, supplierPurchaseOrderLines, supplierPurchaseOrders, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { storagePut } from "../storage";
 import { createHeartbeatJob } from "../_core/heartbeat";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
 import { assertSupplierIncidentClinicScope, calculateSupplierPerformance, filterClinicScopedSupplierRows, validateSupplierIncidentTransition } from "../services/supplierPerformance";
+import { assertCorrectiveActionAvailable, createSupplierResponseToken, hashSupplierResponseToken } from "../services/supplierCorrectiveActions";
 
 const evidenceDocumentType = z.enum(["distributor_authorisation", "ce_certificate", "ifu", "distributor_appointment"]);
 const quantityUnit = z.enum(["units", "ml", "other"]);
@@ -131,6 +132,43 @@ export const supplierOpsRouter = router({
     validateSupplierIncidentTransition(input.status, input.resolutionNote);
     const resolvedAt = input.status === "closed" ? new Date() : incident.resolvedAt; await db.update(supplierIncidents).set({ status: input.status, resolutionNote: input.resolutionNote?.trim() || incident.resolutionNote, dueAt: input.dueAt === undefined ? incident.dueAt : input.dueAt, resolvedAt }).where(eq(supplierIncidents.id, incident.id));
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.incident_updated", entityType: "supplierIncident", entityId: String(incident.id), summary: `Supplier incident moved to ${input.status}` }); return { success: true };
+  }),
+  correctiveActions: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const rows = await db.select({ action: supplierCorrectiveActions, incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierCorrectiveActions).innerJoin(supplierIncidents, eq(supplierCorrectiveActions.supplierIncidentId, supplierIncidents.id)).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierCorrectiveActions.clinicId, workspace.clinic.id));
+    return rows.filter(row => row.action.clinicId === workspace.clinic.id && row.incident.clinicId === workspace.clinic.id);
+  }),
+  issueCorrectiveAction: protectedProcedure.input(z.object({ supplierIncidentId: z.number().int().positive(), contactName: z.string().min(2).max(200), contactEmail: z.string().email().max(320).optional(), requestMessage: z.string().min(20).max(6000), expiresAt: z.date() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (input.expiresAt <= new Date()) throw new Error("Corrective-action expiry must be in the future");
+    const incident = (await db.select().from(supplierIncidents).where(and(eq(supplierIncidents.id, input.supplierIncidentId), eq(supplierIncidents.clinicId, workspace.clinic.id))).limit(1))[0]; assertSupplierIncidentClinicScope(incident, workspace.clinic.id);
+    const token = createSupplierResponseToken(); const inserted = await db.insert(supplierCorrectiveActions).values({ clinicId: workspace.clinic.id, supplierIncidentId: incident.id, contactName: input.contactName, contactEmail: input.contactEmail?.trim() || null, requestMessage: input.requestMessage.trim(), tokenHash: hashSupplierResponseToken(token), expiresAt: input.expiresAt, requestedByUserId: ctx.user.id }).$returningId(); const id = inserted[0]?.id;
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.corrective_action_issued", entityType: "supplierCorrectiveAction", entityId: String(id), summary: `Corrective-action request issued for incident ${incident.id} to ${input.contactName}` }); return { id, token };
+  }),
+  revokeCorrectiveAction: protectedProcedure.input(z.object({ correctiveActionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const action = (await db.select().from(supplierCorrectiveActions).where(and(eq(supplierCorrectiveActions.id, input.correctiveActionId), eq(supplierCorrectiveActions.clinicId, workspace.clinic.id))).limit(1))[0]; if (!action) throw new Error("Corrective-action request not found in this clinic"); if (action.status !== "issued") throw new Error("Only an unresponded corrective-action request can be revoked");
+    await db.update(supplierCorrectiveActions).set({ status: "revoked", revokedAt: new Date(), revokedByUserId: ctx.user.id }).where(eq(supplierCorrectiveActions.id, action.id)); await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.corrective_action_revoked", entityType: "supplierCorrectiveAction", entityId: String(action.id), summary: `Corrective-action request revoked for incident ${action.supplierIncidentId}` }); return { success: true };
+  }),
+  reviewCorrectiveAction: protectedProcedure.input(z.object({ correctiveActionId: z.number().int().positive(), reviewNote: z.string().min(5).max(4000) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const action = (await db.select().from(supplierCorrectiveActions).where(and(eq(supplierCorrectiveActions.id, input.correctiveActionId), eq(supplierCorrectiveActions.clinicId, workspace.clinic.id))).limit(1))[0]; if (!action) throw new Error("Corrective-action request not found in this clinic"); if (action.status !== "responded") throw new Error("Only a supplier response can be marked as reviewed");
+    await db.update(supplierCorrectiveActions).set({ status: "reviewed", reviewNote: input.reviewNote.trim(), reviewedAt: new Date(), reviewedByUserId: ctx.user.id }).where(eq(supplierCorrectiveActions.id, action.id)); await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.corrective_action_reviewed", entityType: "supplierCorrectiveAction", entityId: String(action.id), summary: `Supplier corrective-action response reviewed for incident ${action.supplierIncidentId}` }); return { success: true };
+  }),
+  auditPack: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const reviews = await db.select({ review: supplierPerformanceReviews, catalogue: marketCatalogueProducts }).from(supplierPerformanceReviews).innerJoin(marketCatalogueProducts, eq(supplierPerformanceReviews.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierPerformanceReviews.clinicId, workspace.clinic.id));
+    const incidents = await db.select({ incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierIncidents).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierIncidents.clinicId, workspace.clinic.id));
+    const correctiveActions = await db.select({ action: supplierCorrectiveActions, incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierCorrectiveActions).innerJoin(supplierIncidents, eq(supplierCorrectiveActions.supplierIncidentId, supplierIncidents.id)).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierCorrectiveActions.clinicId, workspace.clinic.id));
+    return { generatedAt: new Date(), clinic: { name: workspace.clinic.name, jurisdiction: workspace.clinic.jurisdiction }, reviews: reviews.filter(row => row.review.clinicId === workspace.clinic.id), incidents: incidents.filter(row => row.incident.clinicId === workspace.clinic.id), correctiveActions: correctiveActions.filter(row => row.action.clinicId === workspace.clinic.id && row.incident.clinicId === workspace.clinic.id) };
+  }),
+  supplierCorrectiveActionByToken: publicProcedure.input(z.object({ token: z.string().min(20).max(200) })).query(async ({ input }) => {
+    const db = await getDb(); if (!db) throw new Error("Database unavailable"); const tokenHash = hashSupplierResponseToken(input.token);
+    const row = (await db.select({ action: supplierCorrectiveActions, incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierCorrectiveActions).innerJoin(supplierIncidents, eq(supplierCorrectiveActions.supplierIncidentId, supplierIncidents.id)).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierCorrectiveActions.tokenHash, tokenHash)).limit(1))[0]; if (!row) throw new Error("Corrective-action request not found");
+    const availability = row.action.status === "revoked" ? "revoked" : row.action.status !== "issued" ? "completed" : row.action.expiresAt <= new Date() ? "expired" : "available"; return { action: { id: row.action.id, contactName: row.action.contactName, requestMessage: row.action.requestMessage, expiresAt: row.action.expiresAt, status: availability, supplierResponse: row.action.status === "responded" || row.action.status === "reviewed" ? row.action.supplierResponse : null }, incident: { title: row.incident.title, description: row.incident.description, category: row.incident.category, severity: row.incident.severity, dueAt: row.incident.dueAt }, supplier: { productName: row.catalogue.brandName, manufacturer: row.catalogue.manufacturer } };
+  }),
+  respondToCorrectiveAction: publicProcedure.input(z.object({ token: z.string().min(20).max(200), response: z.string().min(20).max(8000) })).mutation(async ({ input }) => {
+    const db = await getDb(); if (!db) throw new Error("Database unavailable"); const tokenHash = hashSupplierResponseToken(input.token); const action = (await db.select().from(supplierCorrectiveActions).where(eq(supplierCorrectiveActions.tokenHash, tokenHash)).limit(1))[0]; if (!action) throw new Error("Corrective-action request not found"); assertCorrectiveActionAvailable(action);
+    await db.update(supplierCorrectiveActions).set({ status: "responded", supplierResponse: input.response.trim(), supplierRespondedAt: new Date() }).where(eq(supplierCorrectiveActions.id, action.id)); await db.insert(auditEvents).values({ clinicId: action.clinicId, action: "supplier.corrective_action_responded", entityType: "supplierCorrectiveAction", entityId: String(action.id), summary: `Supplier corrective-action response received for incident ${action.supplierIncidentId}` }); return { success: true };
   }),
 });
 

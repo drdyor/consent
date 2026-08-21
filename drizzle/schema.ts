@@ -375,6 +375,27 @@ export const supplierIncidents = mysqlTable("supplierIncidents", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [index("supplier_incident_clinic_status_idx").on(table.clinicId, table.status), index("supplier_incident_catalogue_idx").on(table.marketCatalogueProductId), index("supplier_incident_due_idx").on(table.dueAt)]);
 
+export const supplierCorrectiveActions = mysqlTable("supplierCorrectiveActions", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  supplierIncidentId: int("supplierIncidentId").notNull().references(() => supplierIncidents.id),
+  contactName: varchar("contactName", { length: 200 }).notNull(),
+  contactEmail: varchar("contactEmail", { length: 320 }),
+  requestMessage: text("requestMessage").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  status: mysqlEnum("status", ["issued", "responded", "reviewed", "revoked", "expired"]).default("issued").notNull(),
+  supplierResponse: text("supplierResponse"),
+  supplierRespondedAt: timestamp("supplierRespondedAt"),
+  reviewNote: text("reviewNote"),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewedByUserId: int("reviewedByUserId").references(() => users.id),
+  revokedAt: timestamp("revokedAt"),
+  revokedByUserId: int("revokedByUserId").references(() => users.id),
+  requestedByUserId: int("requestedByUserId").notNull().references(() => users.id),
+  requestedAt: timestamp("requestedAt").defaultNow().notNull(),
+}, table => [uniqueIndex("supplier_corrective_token_unique").on(table.tokenHash), index("supplier_corrective_clinic_status_idx").on(table.clinicId, table.status), index("supplier_corrective_incident_idx").on(table.supplierIncidentId), index("supplier_corrective_expiry_idx").on(table.expiresAt)]);
+
 export const productInventoryLots = mysqlTable("productInventoryLots", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),

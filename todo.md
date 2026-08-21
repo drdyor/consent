@@ -112,4 +112,17 @@
 - [x] Add router-level tests that block supplier performance and incident reads or mutations outside the current clinic scope.
 - [x] Add an incident-update integration test proving mitigate and close transitions require a resolution note end to end.
 - [x] Add router-level summary tests proving supplier performance and incident reads remain scoped to the current clinic.
-- [x] Add an integration test proving a closed supplier incident is rejected without a resolution note.
+- [x] Add an incident-update integration test proving a closed supplier incident is rejected without a resolution note.
+- [x] Define secure supplier corrective-action request, expiry, response, revocation, and administrator-review controls.
+- [x] Add clinic-scoped corrective-action request records linked to supplier incidents, using hashed capability tokens rather than stored raw tokens.
+- [x] Implement administrator-only request issuance and revocation plus public token-based supplier request review and response submission.
+- [x] Build a controlled supplier response page and administrator request controls within the Supplier Governance workspace.
+- [x] Add clinic-admin audit-pack CSV and print-ready PDF exports for supplier performance, incidents, and corrective-action responses.
+- [x] Validate token secrecy and expiry, clinic scope, request lifecycle, export content, and desktop/mobile views.
+- [x] Reduce dark-background body copy and replace dense dark panels with lighter, high-legibility premium operational surfaces.
+- [x] Refine hierarchy, typography, contrast, and status semantics across the Supplier Governance workspace for a premium paid-clinic experience.
+- [x] Visually validate the refined supplier governance workspace at desktop and mobile widths.
+- [x] Add integration coverage for corrective-action issuance, revocation, public supplier response, expiry/revoked blocking, clinic scoping, and audit-pack data content.
+- [x] Apply consistent high-legibility hierarchy and status semantics across all Supplier Governance panels, not only the hero and access boundary.
+- [x] Re-verify the complete refined Supplier Governance workspace at desktop and mobile widths.
+- [ ] Push the validated completed project to the selected drdyor/consent repository.
