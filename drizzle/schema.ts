@@ -340,6 +340,41 @@ export const supplierPurchaseOrderLines = mysqlTable("supplierPurchaseOrderLines
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("purchase_line_order_idx").on(table.purchaseOrderId), index("purchase_line_product_idx").on(table.productId)]);
 
+export const supplierPerformanceReviews = mysqlTable("supplierPerformanceReviews", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  marketCatalogueProductId: int("marketCatalogueProductId").notNull().references(() => marketCatalogueProducts.id),
+  reviewPeriodEnding: timestamp("reviewPeriodEnding").notNull(),
+  deliveryScore: decimal("deliveryScore", { precision: 5, scale: 2 }).notNull(),
+  documentationScore: decimal("documentationScore", { precision: 5, scale: 2 }).notNull(),
+  reconciliationScore: decimal("reconciliationScore", { precision: 5, scale: 2 }).notNull(),
+  overallScore: decimal("overallScore", { precision: 5, scale: 2 }).notNull(),
+  riskStatus: mysqlEnum("riskStatus", ["acceptable", "monitor", "restricted"]).default("monitor").notNull(),
+  reviewNote: text("reviewNote").notNull(),
+  reviewedByUserId: int("reviewedByUserId").notNull().references(() => users.id),
+  reviewedAt: timestamp("reviewedAt").defaultNow().notNull(),
+}, table => [uniqueIndex("supplier_performance_period_unique").on(table.clinicId, table.marketCatalogueProductId, table.reviewPeriodEnding), index("supplier_performance_clinic_risk_idx").on(table.clinicId, table.riskStatus)]);
+
+export const supplierIncidents = mysqlTable("supplierIncidents", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  marketCatalogueProductId: int("marketCatalogueProductId").notNull().references(() => marketCatalogueProducts.id),
+  supplierPurchaseOrderId: int("supplierPurchaseOrderId").references(() => supplierPurchaseOrders.id),
+  supplierEvidenceDocumentId: int("supplierEvidenceDocumentId").references(() => supplierEvidenceDocuments.id),
+  category: mysqlEnum("category", ["documentation_gap", "delivery_discrepancy", "traceability", "quality_concern", "other"]).notNull(),
+  severity: mysqlEnum("severity", ["low", "moderate", "high", "critical"]).default("moderate").notNull(),
+  status: mysqlEnum("status", ["open", "investigating", "mitigated", "closed"]).default("open").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  ownerUserId: int("ownerUserId").references(() => users.id),
+  dueAt: timestamp("dueAt"),
+  resolutionNote: text("resolutionNote"),
+  resolvedAt: timestamp("resolvedAt"),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("supplier_incident_clinic_status_idx").on(table.clinicId, table.status), index("supplier_incident_catalogue_idx").on(table.marketCatalogueProductId), index("supplier_incident_due_idx").on(table.dueAt)]);
+
 export const productInventoryLots = mysqlTable("productInventoryLots", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),

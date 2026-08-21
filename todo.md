@@ -101,3 +101,15 @@
 - [x] Add per-document reminder threshold and reminder-status metadata, capture it at upload, and apply it in the expiry scan.
 - [x] Add a received and partially-received purchase-order workflow with explicit received-line reconciliation.
 - [x] Persist line-level matched, unmatched, and mismatch status with reconciliation notes, and surface those durable states in the dashboard.
+- [x] Define controlled supplier performance and incident governance, including severity, ownership, due dates, and immutable audit activity.
+- [x] Add clinic-scoped supplier performance review and supplier incident tables linked to market catalogue records and optional purchase orders.
+- [x] Implement administrator-only supplier performance and incident creation, review, resolution, and audit procedures.
+- [x] Build a premium supplier performance and incident review panel with open-risk, response-due, and resolved states.
+- [x] Validate clinic scope, administrator access, performance calculations, incident transitions, and desktop/mobile views.
+- [x] Restrict supplier performance and incident review data to clinic administrators and prove the access rule.
+- [x] Add explicit open-risk, response-due, and resolved incident review states to the supplier governance interface.
+- [x] Add regression coverage for supplier review/incident clinic scope, admin access, and required resolution notes on status transitions.
+- [x] Add router-level tests that block supplier performance and incident reads or mutations outside the current clinic scope.
+- [x] Add an incident-update integration test proving mitigate and close transitions require a resolution note end to end.
+- [x] Add router-level summary tests proving supplier performance and incident reads remain scoped to the current clinic.
+- [x] Add an integration test proving a closed supplier incident is rejected without a resolution note.

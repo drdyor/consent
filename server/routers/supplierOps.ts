@@ -1,11 +1,12 @@
 import { and, eq, lte } from "drizzle-orm";
 import { z } from "zod";
-import { marketCatalogueProducts, productInventoryLots, products, supplierEvidenceDocuments, supplierEvidenceReminders, supplierPurchaseOrderLines, supplierPurchaseOrders, supplierReminderSettings } from "../../drizzle/schema";
+import { auditEvents, marketCatalogueProducts, productInventoryLots, products, supplierEvidenceDocuments, supplierEvidenceReminders, supplierIncidents, supplierPerformanceReviews, supplierPurchaseOrderLines, supplierPurchaseOrders, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { storagePut } from "../storage";
 import { createHeartbeatJob } from "../_core/heartbeat";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
+import { assertSupplierIncidentClinicScope, calculateSupplierPerformance, filterClinicScopedSupplierRows, validateSupplierIncidentTransition } from "../services/supplierPerformance";
 
 const evidenceDocumentType = z.enum(["distributor_authorisation", "ce_certificate", "ifu", "distributor_appointment"]);
 const quantityUnit = z.enum(["units", "ml", "other"]);
@@ -100,6 +101,36 @@ export const supplierOpsRouter = router({
     const reconciliationNote = reconciliationStatus === "matched" ? "Received lot reconciled to purchase-order line" : `Review required: ${!quantityMatches ? "received quantity differs from inventory lot" : "inventory lot differs from expected lot number"}`;
     await db.update(productInventoryLots).set({ purchaseOrderLineId: line.id }).where(eq(productInventoryLots.id, lot.id));
     await db.update(supplierPurchaseOrderLines).set({ reconciliationStatus, reconciliationNote, reconciledAt: new Date(), reconciledByUserId: ctx.user.id }).where(eq(supplierPurchaseOrderLines.id, line.id)); return { success: true, reconciliationStatus };
+  }),
+  supplierGovernanceSummary: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const reviewRows = await db.select({ review: supplierPerformanceReviews, catalogue: marketCatalogueProducts }).from(supplierPerformanceReviews).innerJoin(marketCatalogueProducts, eq(supplierPerformanceReviews.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierPerformanceReviews.clinicId, workspace.clinic.id));
+    const incidentRows = await db.select({ incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierIncidents).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierIncidents.clinicId, workspace.clinic.id));
+    const reviews = filterClinicScopedSupplierRows(reviewRows.map(row => row.review), workspace.clinic.id).map(review => reviewRows.find(row => row.review.id === review.id)!);
+    const incidents = filterClinicScopedSupplierRows(incidentRows.map(row => row.incident), workspace.clinic.id).map(incident => incidentRows.find(row => row.incident.id === incident.id)!);
+    const openIncidents = incidents.filter(item => item.incident.status !== "closed"); const overallAverage = reviews.length ? reviews.reduce((total, item) => total + Number(item.review.overallScore), 0) / reviews.length : null;
+    return { reviews, incidents, metrics: { overallAverage, openIncidents: openIncidents.length, criticalOpenIncidents: openIncidents.filter(item => item.incident.severity === "critical" || item.incident.severity === "high").length } };
+  }),
+  createPerformanceReview: protectedProcedure.input(z.object({ marketCatalogueProductId: z.number().int().positive(), reviewPeriodEnding: z.date(), deliveryScore: z.number().min(0).max(100), documentationScore: z.number().min(0).max(100), reconciliationScore: z.number().min(0).max(100), reviewNote: z.string().min(20).max(3000) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const catalogue = (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, input.marketCatalogueProductId)).limit(1))[0]; if (!catalogue) throw new Error("Catalogue supplier profile not found");
+    const computed = calculateSupplierPerformance(input); const inserted = await db.insert(supplierPerformanceReviews).values({ clinicId: workspace.clinic.id, marketCatalogueProductId: input.marketCatalogueProductId, reviewPeriodEnding: input.reviewPeriodEnding, deliveryScore: String(input.deliveryScore), documentationScore: String(input.documentationScore), reconciliationScore: String(input.reconciliationScore), overallScore: String(computed.overallScore), riskStatus: computed.riskStatus, reviewNote: input.reviewNote, reviewedByUserId: ctx.user.id }).$returningId();
+    const id = inserted[0]?.id; await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.performance_reviewed", entityType: "supplierPerformanceReview", entityId: String(id), summary: `${catalogue.brandName} supplier performance recorded at ${computed.overallScore}/100 (${computed.riskStatus})` }); return { id, ...computed };
+  }),
+  createSupplierIncident: protectedProcedure.input(z.object({ marketCatalogueProductId: z.number().int().positive(), supplierPurchaseOrderId: z.number().int().positive().optional(), supplierEvidenceDocumentId: z.number().int().positive().optional(), category: z.enum(["documentation_gap", "delivery_discrepancy", "traceability", "quality_concern", "other"]), severity: z.enum(["low", "moderate", "high", "critical"]), title: z.string().min(4).max(255), description: z.string().min(20).max(6000), dueAt: z.date().optional() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const catalogue = (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, input.marketCatalogueProductId)).limit(1))[0]; if (!catalogue) throw new Error("Catalogue supplier profile not found");
+    if (input.supplierPurchaseOrderId) { const order = (await db.select().from(supplierPurchaseOrders).where(and(eq(supplierPurchaseOrders.id, input.supplierPurchaseOrderId), eq(supplierPurchaseOrders.clinicId, workspace.clinic.id))).limit(1))[0]; if (!order) throw new Error("Purchase order not found in this clinic"); }
+    if (input.supplierEvidenceDocumentId) { const document = (await db.select().from(supplierEvidenceDocuments).where(and(eq(supplierEvidenceDocuments.id, input.supplierEvidenceDocumentId), eq(supplierEvidenceDocuments.clinicId, workspace.clinic.id))).limit(1))[0]; if (!document) throw new Error("Supplier evidence document not found in this clinic"); }
+    const inserted = await db.insert(supplierIncidents).values({ clinicId: workspace.clinic.id, marketCatalogueProductId: input.marketCatalogueProductId, supplierPurchaseOrderId: input.supplierPurchaseOrderId || null, supplierEvidenceDocumentId: input.supplierEvidenceDocumentId || null, category: input.category, severity: input.severity, title: input.title, description: input.description, ownerUserId: ctx.user.id, dueAt: input.dueAt || null, createdByUserId: ctx.user.id }).$returningId();
+    const id = inserted[0]?.id; await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.incident_opened", entityType: "supplierIncident", entityId: String(id), summary: `${input.severity} supplier incident opened for ${catalogue.brandName}: ${input.title}` }); return { id };
+  }),
+  updateSupplierIncident: protectedProcedure.input(z.object({ incidentId: z.number().int().positive(), status: z.enum(["open", "investigating", "mitigated", "closed"]), resolutionNote: z.string().max(4000).optional(), dueAt: z.date().nullable().optional() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const incident = (await db.select().from(supplierIncidents).where(and(eq(supplierIncidents.id, input.incidentId), eq(supplierIncidents.clinicId, workspace.clinic.id))).limit(1))[0]; assertSupplierIncidentClinicScope(incident, workspace.clinic.id);
+    validateSupplierIncidentTransition(input.status, input.resolutionNote);
+    const resolvedAt = input.status === "closed" ? new Date() : incident.resolvedAt; await db.update(supplierIncidents).set({ status: input.status, resolutionNote: input.resolutionNote?.trim() || incident.resolutionNote, dueAt: input.dueAt === undefined ? incident.dueAt : input.dueAt, resolvedAt }).where(eq(supplierIncidents.id, incident.id));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.incident_updated", entityType: "supplierIncident", entityId: String(incident.id), summary: `Supplier incident moved to ${input.status}` }); return { success: true };
   }),
 });
 
