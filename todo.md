@@ -137,6 +137,11 @@
 - [x] Implement market-specific eligibility gates that block patient-ready use when the selected clinic market lacks its required evidence and administrator verification.
 - [x] Build a premium multi-jurisdiction selector and jurisdiction-aware source/product governance controls for Poland/EU, UK, and USA clinics.
 - [x] Add UK and USA evidence-gate regression coverage, clinic-scope validation, and desktop/mobile visual verification.
+- [x] Review the UK MHRA/UKCA and USA FDA evidence gates against current official sources, documenting what the software checks and what it cannot determine.
+- [x] Research Poland/EU, Great Britain, and selected US-state authority sources and create a cited jurisdiction matrix with concrete control gaps.
+- [x] Refine UK and USA regulated-device evidence gates where the official-source review identifies missing distinction or unsupported assumptions.
+- [x] Add a concise legal-review prompt and evidence-boundary disclosure to the multi-jurisdiction clinic selector.
+- [x] Add regression coverage and responsive verification for revised evidence gates, jurisdiction matrix references, and the legal-review prompt.
 - [ ] Define clinic escalation-contact, automated delivery, retry, opt-in, and audit governance for overdue high-severity incidents.
 - [ ] Add clinic escalation contacts, escalation delivery records, and document scan-status metadata to the data model.
 - [ ] Implement administrator-only escalation contact configuration and idempotent automated overdue-incident delivery.
