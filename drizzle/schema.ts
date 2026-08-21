@@ -433,8 +433,75 @@ export const supplierCorrectiveActionDocuments = mysqlTable("supplierCorrectiveA
   mimeType: varchar("mimeType", { length: 120 }).notNull(),
   sizeBytes: int("sizeBytes").notNull(),
   uploadedBy: mysqlEnum("uploadedBy", ["supplier", "administrator"]).default("supplier").notNull(),
+  scanStatus: mysqlEnum("scanStatus", ["quarantined", "scanning", "clean", "unsafe", "scan_failed"]).default("quarantined").notNull(),
+  scanProvider: mysqlEnum("scanProvider", ["callback", "commercial", "manual_review", "none"]).default("callback").notNull(),
+  scanCallbackTokenHash: varchar("scanCallbackTokenHash", { length: 64 }),
+  commercialScanAnalysisId: varchar("commercialScanAnalysisId", { length: 255 }),
+  scanRequestedAt: timestamp("scanRequestedAt"),
+  scannedAt: timestamp("scannedAt"),
+  scanVerdictNote: text("scanVerdictNote"),
   uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
-}, table => [index("supplier_corrective_document_action_idx").on(table.supplierCorrectiveActionId), index("supplier_corrective_document_clinic_idx").on(table.clinicId)]);
+}, table => [index("supplier_corrective_document_action_idx").on(table.supplierCorrectiveActionId), index("supplier_corrective_document_clinic_idx").on(table.clinicId), index("supplier_corrective_document_scan_idx").on(table.clinicId, table.scanStatus)]);
+
+export const supplierEscalationContacts = mysqlTable("supplierEscalationContacts", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  displayName: varchar("displayName", { length: 160 }).notNull(),
+  emailAddress: varchar("emailAddress", { length: 320 }),
+  webhookUrl: text("webhookUrl"),
+  webhookSecretCiphertext: text("webhookSecretCiphertext"),
+  emailEnabled: boolean("emailEnabled").default(false).notNull(),
+  webhookEnabled: boolean("webhookEnabled").default(false).notNull(),
+  receiveHigh: boolean("receiveHigh").default(true).notNull(),
+  receiveCritical: boolean("receiveCritical").default(true).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("supplier_escalation_contact_clinic_idx").on(table.clinicId, table.isActive)]);
+
+export const supplierEscalationSettings = mysqlTable("supplierEscalationSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  automatedDeliveryEnabled: boolean("automatedDeliveryEnabled").default(false).notNull(),
+  managedEmailEnabled: boolean("managedEmailEnabled").default(false).notNull(),
+  managedEmailProvider: mysqlEnum("managedEmailProvider", ["none", "resend"]).default("none").notNull(),
+  retryLimit: int("retryLimit").default(3).notNull(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  updatedByUserId: int("updatedByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("supplier_escalation_settings_clinic_unique").on(table.clinicId), index("supplier_escalation_schedule_idx").on(table.scheduleCronTaskUid)]);
+
+export const supplierIncidentEscalationDeliveries = mysqlTable("supplierIncidentEscalationDeliveries", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  supplierIncidentId: int("supplierIncidentId").notNull().references(() => supplierIncidents.id),
+  supplierEscalationContactId: int("supplierEscalationContactId").notNull().references(() => supplierEscalationContacts.id),
+  deliveryDay: timestamp("deliveryDay").notNull(),
+  channel: mysqlEnum("channel", ["webhook", "managed_email"]).notNull(),
+  status: mysqlEnum("status", ["pending", "delivered", "retrying", "failed", "configuration_required"]).default("pending").notNull(),
+  attemptCount: int("attemptCount").default(0).notNull(),
+  lastAttemptAt: timestamp("lastAttemptAt"),
+  deliveredAt: timestamp("deliveredAt"),
+  responseCode: int("responseCode"),
+  errorSummary: text("errorSummary"),
+  payloadHash: varchar("payloadHash", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("supplier_escalation_delivery_daily_unique").on(table.supplierIncidentId, table.supplierEscalationContactId, table.deliveryDay, table.channel), index("supplier_escalation_delivery_clinic_idx").on(table.clinicId, table.status)]);
+
+export const supplierDocumentScanSettings = mysqlTable("supplierDocumentScanSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  quarantineEnabled: boolean("quarantineEnabled").default(true).notNull(),
+  callbackEnabled: boolean("callbackEnabled").default(false).notNull(),
+  callbackUrl: text("callbackUrl"),
+  commercialScanEnabled: boolean("commercialScanEnabled").default(false).notNull(),
+  commercialProvider: mysqlEnum("commercialProvider", ["none", "virustotal"]).default("none").notNull(),
+  updatedByUserId: int("updatedByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("supplier_document_scan_settings_clinic_unique").on(table.clinicId)]);
 
 export const productInventoryLots = mysqlTable("productInventoryLots", {
   id: int("id").autoincrement().primaryKey(),

@@ -1,13 +1,14 @@
 import { and, eq, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, marketCatalogueProducts, productInventoryLots, products, supplierCorrectiveActionDocuments, supplierCorrectiveActions, supplierEvidenceDocuments, supplierEvidenceReminders, supplierIncidents, supplierPerformanceReviews, supplierPurchaseOrderLines, supplierPurchaseOrders, supplierReminderSettings } from "../../drizzle/schema";
+import { auditEvents, marketCatalogueProducts, productInventoryLots, products, supplierCorrectiveActionDocuments, supplierCorrectiveActions, supplierDocumentScanSettings, supplierEscalationContacts, supplierEscalationSettings, supplierEvidenceDocuments, supplierEvidenceReminders, supplierIncidentEscalationDeliveries, supplierIncidents, supplierPerformanceReviews, supplierPurchaseOrderLines, supplierPurchaseOrders, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { storagePut } from "../storage";
+import { storageGetSignedUrl, storagePut } from "../storage";
 import { createHeartbeatJob } from "../_core/heartbeat";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
 import { assertSupplierIncidentClinicScope, calculateSupplierPerformance, filterClinicScopedSupplierRows, validateSupplierIncidentTransition } from "../services/supplierPerformance";
 import { assertCorrectiveActionAvailable, createSupplierResponseToken, hashSupplierResponseToken } from "../services/supplierCorrectiveActions";
+import { createOpaqueToken, decryptContactSecret, deliverManagedEmail, deliverSignedWebhook, encryptContactSecret, escalationPayload, hashValue, inspectCommercialScan, submitCommercialScan, shouldAttemptEscalationDelivery, shouldNotifyContact } from "../services/supplierEscalation";
 
 const evidenceDocumentType = z.enum(["distributor_authorisation", "ce_certificate", "ifu", "distributor_appointment"]);
 const quantityUnit = z.enum(["units", "ml", "other"]);
@@ -65,6 +66,85 @@ export const supplierOpsRouter = router({
     if (!reminder) throw new Error("Evidence reminder not found");
     await db.update(supplierEvidenceReminders).set({ status: "acknowledged", acknowledgedAt: new Date() }).where(and(eq(supplierEvidenceReminders.id, input.reminderId), eq(supplierEvidenceReminders.clinicId, workspace.clinic.id)));
     await db.update(supplierEvidenceDocuments).set({ reminderStatus: "acknowledged" }).where(eq(supplierEvidenceDocuments.id, reminder.supplierEvidenceDocumentId)); return { success: true };
+  }),
+  escalationContacts: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const contacts = await db.select().from(supplierEscalationContacts).where(eq(supplierEscalationContacts.clinicId, workspace.clinic.id));
+    return contacts.map(({ webhookSecretCiphertext: _secret, ...contact }) => contact);
+  }),
+  saveEscalationContact: protectedProcedure.input(z.object({ id: z.number().int().positive().optional(), displayName: z.string().min(2).max(160), emailAddress: z.string().email().max(320).optional(), webhookUrl: z.string().url().refine(value => value.startsWith("https://"), "Webhook URL must use HTTPS").optional(), webhookSecret: z.string().min(12).max(500).optional(), emailEnabled: z.boolean(), webhookEnabled: z.boolean(), receiveHigh: z.boolean(), receiveCritical: z.boolean(), isActive: z.boolean() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    if (!input.emailEnabled && !input.webhookEnabled) throw new Error("Enable at least one delivery channel or deactivate this contact");
+    if (input.emailEnabled && !input.emailAddress) throw new Error("An email address is required for managed email delivery");
+    if (input.webhookEnabled && !input.webhookUrl) throw new Error("An HTTPS webhook URL is required for webhook delivery");
+    const payload = { displayName: input.displayName.trim(), emailAddress: input.emailAddress?.trim() || null, webhookUrl: input.webhookUrl?.trim() || null, emailEnabled: input.emailEnabled, webhookEnabled: input.webhookEnabled, receiveHigh: input.receiveHigh, receiveCritical: input.receiveCritical, isActive: input.isActive };
+    if (input.id) {
+      const existing = (await db.select().from(supplierEscalationContacts).where(and(eq(supplierEscalationContacts.id, input.id), eq(supplierEscalationContacts.clinicId, workspace.clinic.id))).limit(1))[0];
+      if (!existing) throw new Error("Escalation contact not found in this clinic");
+      await db.update(supplierEscalationContacts).set({ ...payload, ...(input.webhookSecret ? { webhookSecretCiphertext: encryptContactSecret(input.webhookSecret) } : {}) }).where(eq(supplierEscalationContacts.id, existing.id));
+      await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.escalation_contact_updated", entityType: "supplierEscalationContact", entityId: String(existing.id), summary: `Escalation contact updated: ${payload.displayName}` });
+      return { id: existing.id };
+    }
+    const inserted = await db.insert(supplierEscalationContacts).values({ clinicId: workspace.clinic.id, ...payload, webhookSecretCiphertext: input.webhookSecret ? encryptContactSecret(input.webhookSecret) : null, createdByUserId: ctx.user.id }).$returningId();
+    const id = inserted[0]?.id; await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.escalation_contact_created", entityType: "supplierEscalationContact", entityId: String(id), summary: `Escalation contact created: ${payload.displayName}` }); return { id };
+  }),
+  escalationSettings: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    return (await db.select().from(supplierEscalationSettings).where(eq(supplierEscalationSettings.clinicId, workspace.clinic.id)).limit(1))[0] || null;
+  }),
+  saveEscalationSettings: protectedProcedure.input(z.object({ automatedDeliveryEnabled: z.boolean(), managedEmailEnabled: z.boolean(), managedEmailProvider: z.enum(["none", "resend"]), retryLimit: z.number().int().min(0).max(5) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    if (input.managedEmailEnabled && input.managedEmailProvider === "none") throw new Error("Choose a managed email provider before enabling managed email delivery");
+    const existing = (await db.select().from(supplierEscalationSettings).where(eq(supplierEscalationSettings.clinicId, workspace.clinic.id)).limit(1))[0];
+    const payload = { ...input, updatedByUserId: ctx.user.id };
+    if (existing) await db.update(supplierEscalationSettings).set(payload).where(eq(supplierEscalationSettings.id, existing.id)); else await db.insert(supplierEscalationSettings).values({ clinicId: workspace.clinic.id, ...payload });
+    return { success: true };
+  }),
+  escalationDeliveries: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    return db.select({ delivery: supplierIncidentEscalationDeliveries, contact: supplierEscalationContacts, incident: supplierIncidents }).from(supplierIncidentEscalationDeliveries).innerJoin(supplierEscalationContacts, eq(supplierIncidentEscalationDeliveries.supplierEscalationContactId, supplierEscalationContacts.id)).innerJoin(supplierIncidents, eq(supplierIncidentEscalationDeliveries.supplierIncidentId, supplierIncidents.id)).where(eq(supplierIncidentEscalationDeliveries.clinicId, workspace.clinic.id));
+  }),
+  scanSettings: protectedProcedure.query(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    return (await db.select().from(supplierDocumentScanSettings).where(eq(supplierDocumentScanSettings.clinicId, workspace.clinic.id)).limit(1))[0] || null;
+  }),
+  saveScanSettings: protectedProcedure.input(z.object({ quarantineEnabled: z.boolean(), callbackEnabled: z.boolean(), callbackUrl: z.string().url().refine(value => value.startsWith("https://"), "Scanner callback URL must use HTTPS").optional(), commercialScanEnabled: z.boolean(), commercialProvider: z.enum(["none", "virustotal"]) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    if (!input.quarantineEnabled) throw new Error("Quarantine cannot be disabled: unscanned supplier documents must never become downloadable");
+    if (input.callbackEnabled && !input.callbackUrl) throw new Error("An HTTPS scanner callback URL is required when callback scanning is enabled");
+    if (input.commercialScanEnabled && input.commercialProvider === "none") throw new Error("Choose a commercial scan provider before enabling the commercial scan adapter");
+    const existing = (await db.select().from(supplierDocumentScanSettings).where(eq(supplierDocumentScanSettings.clinicId, workspace.clinic.id)).limit(1))[0];
+    const payload = { ...input, callbackUrl: input.callbackUrl?.trim() || null, updatedByUserId: ctx.user.id };
+    if (existing) await db.update(supplierDocumentScanSettings).set(payload).where(eq(supplierDocumentScanSettings.id, existing.id)); else await db.insert(supplierDocumentScanSettings).values({ clinicId: workspace.clinic.id, ...payload });
+    return { success: true };
+  }),
+  reviewCorrectiveActionDocument: protectedProcedure.input(z.object({ documentId: z.number().int().positive(), verdict: z.enum(["clean", "unsafe"]), reviewNote: z.string().min(10).max(2000) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const document = (await db.select().from(supplierCorrectiveActionDocuments).where(and(eq(supplierCorrectiveActionDocuments.id, input.documentId), eq(supplierCorrectiveActionDocuments.clinicId, workspace.clinic.id))).limit(1))[0];
+    if (!document) throw new Error("Supporting document not found in this clinic");
+    await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: input.verdict, scanProvider: "manual_review", scannedAt: new Date(), scanVerdictNote: input.reviewNote.trim() }).where(eq(supplierCorrectiveActionDocuments.id, document.id));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: `supplier.corrective_document_${input.verdict}`, entityType: "supplierCorrectiveActionDocument", entityId: String(document.id), summary: `Quarantined supplier document marked ${input.verdict} by administrator review` }); return { success: true };
+  }),
+  requestCorrectiveActionDocumentScan: protectedProcedure.input(z.object({ documentId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const document = (await db.select().from(supplierCorrectiveActionDocuments).where(and(eq(supplierCorrectiveActionDocuments.id, input.documentId), eq(supplierCorrectiveActionDocuments.clinicId, workspace.clinic.id))).limit(1))[0];
+    if (!document) throw new Error("Supporting document not found in this clinic");
+    if (document.scanStatus === "clean" || document.scanStatus === "unsafe") throw new Error("This document already has a final scan verdict");
+    const result = await initiateSupplierDocumentScan(document); await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "supplier.corrective_document_scan_requested", entityType: "supplierCorrectiveActionDocument", entityId: String(document.id), summary: `Administrator requested ${result.provider} scan for quarantined supplier document` }); return result;
+  }),
+  inspectPendingCommercialDocumentScans: protectedProcedure.mutation(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); return runCommercialDocumentScanFollowup(workspace.clinic.id);
+  }),
+  scanOverdueIncidentEscalations: protectedProcedure.input(z.object({ now: z.date().optional() }).optional()).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); return runOverdueIncidentDeliveryScan(workspace.clinic.id, input?.now || new Date());
+  }),
+  activateDailyIncidentEscalationSchedule: protectedProcedure.mutation(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const existing = (await db.select().from(supplierEscalationSettings).where(eq(supplierEscalationSettings.clinicId, workspace.clinic.id)).limit(1))[0];
+    if (existing?.scheduleCronTaskUid) return { taskUid: existing.scheduleCronTaskUid, alreadyActive: true };
+    const job = await createHeartbeatJob({ name: `supplier-incident-escalation-clinic-${workspace.clinic.id}`, cron: "0 15 5 * * *", path: "/api/scheduled/supplier-incident-escalations", method: "POST", description: "Aegis Consent daily overdue high-severity incident delivery" }, "");
+    if (existing) await db.update(supplierEscalationSettings).set({ scheduleCronTaskUid: job.taskUid }).where(eq(supplierEscalationSettings.id, existing.id)); else await db.insert(supplierEscalationSettings).values({ clinicId: workspace.clinic.id, automatedDeliveryEnabled: false, managedEmailEnabled: false, managedEmailProvider: "none", retryLimit: 3, scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id });
+    return { taskUid: job.taskUid, nextExecutionAt: job.nextExecutionAt, alreadyActive: false };
   }),
   purchaseOrders: protectedProcedure.query(async ({ ctx }) => {
     const workspace = await requireWorkspace(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
@@ -137,7 +217,7 @@ export const supplierOpsRouter = router({
     const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
     const rows = await db.select({ action: supplierCorrectiveActions, incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierCorrectiveActions).innerJoin(supplierIncidents, eq(supplierCorrectiveActions.supplierIncidentId, supplierIncidents.id)).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierCorrectiveActions.clinicId, workspace.clinic.id));
     const documents = await db.select().from(supplierCorrectiveActionDocuments).where(eq(supplierCorrectiveActionDocuments.clinicId, workspace.clinic.id));
-    return rows.filter(row => row.action.clinicId === workspace.clinic.id && row.incident.clinicId === workspace.clinic.id).map(row => ({ ...row, documents: documents.filter(document => document.supplierCorrectiveActionId === row.action.id).map(document => ({ ...document, documentUrl: `/api/supplier-corrective-document/${document.id}/download` })) }));
+    return rows.filter(row => row.action.clinicId === workspace.clinic.id && row.incident.clinicId === workspace.clinic.id).map(row => ({ ...row, documents: documents.filter(document => document.supplierCorrectiveActionId === row.action.id).map(document => ({ ...document, documentUrl: document.scanStatus === "clean" ? `/api/supplier-corrective-document/${document.id}/download` : null })) }));
   }),
   overdueHighSeverityIncidents: protectedProcedure.query(async ({ ctx }) => {
     const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const now = new Date();
@@ -176,16 +256,18 @@ export const supplierOpsRouter = router({
   supplierCorrectiveActionByToken: publicProcedure.input(z.object({ token: z.string().min(20).max(200) })).query(async ({ input }) => {
     const db = await getDb(); if (!db) throw new Error("Database unavailable"); const tokenHash = hashSupplierResponseToken(input.token);
     const row = (await db.select({ action: supplierCorrectiveActions, incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierCorrectiveActions).innerJoin(supplierIncidents, eq(supplierCorrectiveActions.supplierIncidentId, supplierIncidents.id)).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierCorrectiveActions.tokenHash, tokenHash)).limit(1))[0]; if (!row) throw new Error("Corrective-action request not found");
-    const documents = await db.select({ originalFilename: supplierCorrectiveActionDocuments.originalFilename, uploadedAt: supplierCorrectiveActionDocuments.uploadedAt }).from(supplierCorrectiveActionDocuments).where(eq(supplierCorrectiveActionDocuments.supplierCorrectiveActionId, row.action.id));
+    const documents = await db.select({ originalFilename: supplierCorrectiveActionDocuments.originalFilename, uploadedAt: supplierCorrectiveActionDocuments.uploadedAt, scanStatus: supplierCorrectiveActionDocuments.scanStatus, scanVerdictNote: supplierCorrectiveActionDocuments.scanVerdictNote }).from(supplierCorrectiveActionDocuments).where(eq(supplierCorrectiveActionDocuments.supplierCorrectiveActionId, row.action.id));
     const availability = row.action.status === "revoked" ? "revoked" : row.action.status !== "issued" ? "completed" : row.action.expiresAt <= new Date() ? "expired" : "available"; return { action: { id: row.action.id, contactName: row.action.contactName, requestMessage: row.action.requestMessage, expiresAt: row.action.expiresAt, status: availability, supplierResponse: row.action.status === "responded" || row.action.status === "reviewed" ? row.action.supplierResponse : null }, incident: { title: row.incident.title, description: row.incident.description, category: row.incident.category, severity: row.incident.severity, dueAt: row.incident.dueAt }, supplier: { productName: row.catalogue.brandName, manufacturer: row.catalogue.manufacturer }, documents };
   }),
   uploadCorrectiveActionDocument: publicProcedure.input(z.object({ token: z.string().min(20).max(200), originalFilename: z.string().min(1).max(255), mimeType: z.enum(["application/pdf", "image/png", "image/jpeg"]), fileBase64: z.string().min(8).max(15_000_000) })).mutation(async ({ input }) => {
     const db = await getDb(); if (!db) throw new Error("Database unavailable"); const tokenHash = hashSupplierResponseToken(input.token); const action = (await db.select().from(supplierCorrectiveActions).where(eq(supplierCorrectiveActions.tokenHash, tokenHash)).limit(1))[0]; if (!action) throw new Error("Corrective-action request not found"); assertCorrectiveActionAvailable(action);
     const bytes = Buffer.from(parseBase64(input.fileBase64), "base64"); if (!bytes.length || bytes.length > maxUploadBytes) throw new Error("Supporting document must be between 1 byte and 10 MB"); const safeFilename = input.originalFilename.replace(/[^a-zA-Z0-9._-]/g, "_"); const stored = await storagePut(`clinics/${action.clinicId}/supplier-corrective-actions/${action.id}/${Date.now()}-${safeFilename}`, bytes, input.mimeType);
-    const inserted = await db.insert(supplierCorrectiveActionDocuments).values({ clinicId: action.clinicId, supplierCorrectiveActionId: action.id, storageKey: stored.key, documentUrl: stored.url, originalFilename: input.originalFilename, mimeType: input.mimeType, sizeBytes: bytes.length, uploadedBy: "supplier" }).$returningId(); await db.insert(auditEvents).values({ clinicId: action.clinicId, action: "supplier.corrective_action_document_uploaded", entityType: "supplierCorrectiveAction", entityId: String(action.id), summary: `Supplier supporting document received: ${input.originalFilename}` }); return { id: inserted[0]?.id, originalFilename: input.originalFilename };
+    const inserted = await db.insert(supplierCorrectiveActionDocuments).values({ clinicId: action.clinicId, supplierCorrectiveActionId: action.id, storageKey: stored.key, documentUrl: stored.url, originalFilename: input.originalFilename, mimeType: input.mimeType, sizeBytes: bytes.length, uploadedBy: "supplier" }).$returningId(); const id = inserted[0]?.id; if (!id) throw new Error("Unable to register supporting document");
+    const scan = await initiateSupplierDocumentScan({ id, clinicId: action.clinicId, storageKey: stored.key, originalFilename: input.originalFilename, mimeType: input.mimeType }); await db.insert(auditEvents).values({ clinicId: action.clinicId, action: "supplier.corrective_action_document_uploaded", entityType: "supplierCorrectiveAction", entityId: String(action.id), summary: `Supplier supporting document received in quarantine: ${input.originalFilename}` }); return { id, originalFilename: input.originalFilename, scanStatus: scan.scanStatus, scanProvider: scan.provider };
   }),
   respondToCorrectiveAction: publicProcedure.input(z.object({ token: z.string().min(20).max(200), response: z.string().min(20).max(8000) })).mutation(async ({ input }) => {
     const db = await getDb(); if (!db) throw new Error("Database unavailable"); const tokenHash = hashSupplierResponseToken(input.token); const action = (await db.select().from(supplierCorrectiveActions).where(eq(supplierCorrectiveActions.tokenHash, tokenHash)).limit(1))[0]; if (!action) throw new Error("Corrective-action request not found"); assertCorrectiveActionAvailable(action);
+    const unsafeAttachment = (await db.select().from(supplierCorrectiveActionDocuments).where(eq(supplierCorrectiveActionDocuments.supplierCorrectiveActionId, action.id))).some(document => document.scanStatus === "unsafe"); if (unsafeAttachment) throw new Error("A supporting document was marked unsafe and must be resolved by the issuing clinic before this response can be submitted");
     await db.update(supplierCorrectiveActions).set({ status: "responded", supplierResponse: input.response.trim(), supplierRespondedAt: new Date() }).where(eq(supplierCorrectiveActions.id, action.id)); await db.insert(auditEvents).values({ clinicId: action.clinicId, action: "supplier.corrective_action_responded", entityType: "supplierCorrectiveAction", entityId: String(action.id), summary: `Supplier corrective-action response received for incident ${action.supplierIncidentId}` }); return { success: true };
   }),
 });
@@ -205,4 +287,99 @@ export async function runEvidenceExpiryScan(clinicId: number, now = new Date()) 
     await db.update(supplierEvidenceDocuments).set({ reminderStatus: expiresAt < now ? "overdue" : "in_app_open", lastReminderSentAt: now }).where(eq(supplierEvidenceDocuments.id, document.id)); created += 1;
   }
   return { scanned: due.length, created, externalDeliveryEnabled: Boolean(settings?.externalDeliveryEnabled) };
+}
+
+async function createOrAttemptIncidentDelivery(input: { clinicId: number; incident: typeof supplierIncidents.$inferSelect; supplier: string; contact: typeof supplierEscalationContacts.$inferSelect; channel: "webhook" | "managed_email"; retryLimit: number; now: Date }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const deliveryDay = dayKey(input.now); const payload = escalationPayload({ incidentId: input.incident.id, clinicId: input.clinicId, severity: input.incident.severity as "high" | "critical", title: input.incident.title, dueAt: input.incident.dueAt!, supplier: input.supplier }); const payloadHash = hashValue(JSON.stringify(payload));
+  const existing = (await db.select().from(supplierIncidentEscalationDeliveries).where(and(eq(supplierIncidentEscalationDeliveries.supplierIncidentId, input.incident.id), eq(supplierIncidentEscalationDeliveries.supplierEscalationContactId, input.contact.id), eq(supplierIncidentEscalationDeliveries.deliveryDay, deliveryDay), eq(supplierIncidentEscalationDeliveries.channel, input.channel))).limit(1))[0];
+  if (!shouldAttemptEscalationDelivery(existing, input.retryLimit)) return { skipped: true as const, status: existing!.status };
+  const deliveryId = existing?.id || (await db.insert(supplierIncidentEscalationDeliveries).values({ clinicId: input.clinicId, supplierIncidentId: input.incident.id, supplierEscalationContactId: input.contact.id, deliveryDay, channel: input.channel, payloadHash }).$returningId())[0]?.id;
+  if (!deliveryId) throw new Error("Unable to create escalation delivery audit row");
+  const attemptCount = (existing?.attemptCount || 0) + 1;
+  try {
+    if (input.channel === "webhook") {
+      if (!input.contact.webhookUrl) throw new Error("Webhook endpoint has not been configured");
+      const responseCode = await deliverSignedWebhook(input.contact.webhookUrl, input.contact.webhookSecretCiphertext ? decryptContactSecret(input.contact.webhookSecretCiphertext) : null, payload);
+      await db.update(supplierIncidentEscalationDeliveries).set({ status: "delivered", attemptCount, lastAttemptAt: input.now, deliveredAt: input.now, responseCode, errorSummary: null }).where(eq(supplierIncidentEscalationDeliveries.id, deliveryId));
+    } else {
+      if (!input.contact.emailAddress) throw new Error("Managed email recipient has not been configured");
+      const result = await deliverManagedEmail(input.contact.emailAddress, payload);
+      if (!result.configured) {
+        await db.update(supplierIncidentEscalationDeliveries).set({ status: "configuration_required", attemptCount, lastAttemptAt: input.now, errorSummary: "Managed email credentials or sender are not configured" }).where(eq(supplierIncidentEscalationDeliveries.id, deliveryId));
+        return { skipped: false as const, status: "configuration_required" as const };
+      }
+      await db.update(supplierIncidentEscalationDeliveries).set({ status: "delivered", attemptCount, lastAttemptAt: input.now, deliveredAt: input.now, responseCode: result.status, errorSummary: null }).where(eq(supplierIncidentEscalationDeliveries.id, deliveryId));
+    }
+    return { skipped: false as const, status: "delivered" as const };
+  } catch (error) {
+    const exhausted = attemptCount >= input.retryLimit;
+    await db.update(supplierIncidentEscalationDeliveries).set({ status: exhausted ? "failed" : "retrying", attemptCount, lastAttemptAt: input.now, errorSummary: error instanceof Error ? error.message.slice(0, 1000) : "Unknown delivery failure" }).where(eq(supplierIncidentEscalationDeliveries.id, deliveryId));
+    return { skipped: false as const, status: exhausted ? "failed" as const : "retrying" as const };
+  }
+}
+
+export async function runOverdueIncidentDeliveryScan(clinicId: number, now = new Date()) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const settings = (await db.select().from(supplierEscalationSettings).where(eq(supplierEscalationSettings.clinicId, clinicId)).limit(1))[0];
+  if (!settings?.automatedDeliveryEnabled) return { scanned: 0, delivered: 0, skipped: "automation_disabled" as const };
+  const contacts = (await db.select().from(supplierEscalationContacts).where(eq(supplierEscalationContacts.clinicId, clinicId))).filter(contact => contact.isActive);
+  const rows = await db.select({ incident: supplierIncidents, catalogue: marketCatalogueProducts }).from(supplierIncidents).innerJoin(marketCatalogueProducts, eq(supplierIncidents.marketCatalogueProductId, marketCatalogueProducts.id)).where(eq(supplierIncidents.clinicId, clinicId));
+  const overdue = rows.filter(row => (row.incident.severity === "high" || row.incident.severity === "critical") && row.incident.status !== "closed" && Boolean(row.incident.dueAt) && row.incident.dueAt! < now);
+  let delivered = 0; let attempted = 0;
+  for (const row of overdue) for (const contact of contacts) {
+    if (!shouldNotifyContact(contact, row.incident.severity as "high" | "critical")) continue;
+    if (contact.webhookEnabled) { attempted += 1; const result = await createOrAttemptIncidentDelivery({ clinicId, incident: row.incident, supplier: row.catalogue.brandName, contact, channel: "webhook", retryLimit: settings.retryLimit, now }); if (result.status === "delivered") delivered += 1; }
+    if (settings.managedEmailEnabled && contact.emailEnabled) { attempted += 1; const result = await createOrAttemptIncidentDelivery({ clinicId, incident: row.incident, supplier: row.catalogue.brandName, contact, channel: "managed_email", retryLimit: settings.retryLimit, now }); if (result.status === "delivered") delivered += 1; }
+  }
+  if (attempted) await db.insert(auditEvents).values({ clinicId, action: "supplier.incident_escalation_delivery_scan", entityType: "clinic", entityId: String(clinicId), summary: `Overdue high-severity scan processed ${overdue.length} incidents and ${attempted} delivery paths (${delivered} delivered)` });
+  return { scanned: overdue.length, attempted, delivered };
+}
+
+export async function runCommercialDocumentScanFollowup(clinicId: number) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const settings = (await db.select().from(supplierDocumentScanSettings).where(eq(supplierDocumentScanSettings.clinicId, clinicId)).limit(1))[0];
+  if (!settings?.commercialScanEnabled || settings.commercialProvider !== "virustotal") return { checked: 0, resolved: 0, skipped: "commercial_scan_disabled" as const };
+  const documents = (await db.select().from(supplierCorrectiveActionDocuments).where(eq(supplierCorrectiveActionDocuments.clinicId, clinicId))).filter(document => document.scanProvider === "commercial" && document.scanStatus === "scanning" && Boolean(document.commercialScanAnalysisId));
+  let resolved = 0;
+  for (const document of documents) {
+    try {
+      const result = await inspectCommercialScan(document.commercialScanAnalysisId!);
+      if (!result.configured || result.state === "scanning") continue;
+      await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: result.state, scannedAt: new Date(), scanVerdictNote: result.note || null }).where(eq(supplierCorrectiveActionDocuments.id, document.id)); resolved += 1;
+    } catch (error) {
+      await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "scan_failed", scanVerdictNote: error instanceof Error ? error.message.slice(0, 1000) : "Commercial scan follow-up failed" }).where(eq(supplierCorrectiveActionDocuments.id, document.id));
+    }
+  }
+  return { checked: documents.length, resolved };
+}
+
+export async function recordSupplierDocumentScanVerdict(documentId: number, callbackToken: string, verdict: "clean" | "unsafe", note?: string) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const document = (await db.select().from(supplierCorrectiveActionDocuments).where(eq(supplierCorrectiveActionDocuments.id, documentId)).limit(1))[0];
+  if (!document || !document.scanCallbackTokenHash || document.scanCallbackTokenHash !== hashValue(callbackToken)) throw new Error("Scanner callback is invalid or expired");
+  if (document.scanStatus !== "scanning" && document.scanStatus !== "quarantined") throw new Error("Document scan verdict has already been recorded");
+  await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: verdict, scannedAt: new Date(), scanVerdictNote: note?.slice(0, 2000) || null }).where(eq(supplierCorrectiveActionDocuments.id, document.id));
+  await db.insert(auditEvents).values({ clinicId: document.clinicId, action: `supplier.corrective_document_scanner_${verdict}`, entityType: "supplierCorrectiveActionDocument", entityId: String(document.id), summary: `Scanner callback marked supplier document ${verdict}` }); return { success: true };
+}
+
+export async function initiateSupplierDocumentScan(document: Pick<typeof supplierCorrectiveActionDocuments.$inferSelect, "id" | "clinicId" | "storageKey" | "originalFilename" | "mimeType">) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const settings = (await db.select().from(supplierDocumentScanSettings).where(eq(supplierDocumentScanSettings.clinicId, document.clinicId)).limit(1))[0];
+  if (settings?.commercialScanEnabled && settings.commercialProvider === "virustotal") {
+    try {
+      const submission = await submitCommercialScan(await storageGetSignedUrl(document.storageKey), document.originalFilename, document.mimeType);
+      if (submission.configured) { await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "scanning", scanProvider: "commercial", commercialScanAnalysisId: submission.analysisId, scanRequestedAt: new Date(), scanVerdictNote: "Commercial scan submitted; document remains quarantined" }).where(eq(supplierCorrectiveActionDocuments.id, document.id)); return { scanStatus: "scanning" as const, provider: "commercial" as const }; }
+      await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "quarantined", scanProvider: "commercial", scanVerdictNote: "Commercial scanner is enabled but provider credentials are not configured" }).where(eq(supplierCorrectiveActionDocuments.id, document.id)); return { scanStatus: "quarantined" as const, provider: "commercial" as const };
+    } catch (error) {
+      await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "scan_failed", scanProvider: "commercial", scanVerdictNote: error instanceof Error ? error.message.slice(0, 1000) : "Commercial scan submission failed" }).where(eq(supplierCorrectiveActionDocuments.id, document.id)); return { scanStatus: "scan_failed" as const, provider: "commercial" as const };
+    }
+  }
+  if (settings?.callbackEnabled && settings.callbackUrl) {
+    const callbackToken = createOpaqueToken(); const signedUrl = await storageGetSignedUrl(document.storageKey);
+    await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "scanning", scanProvider: "callback", scanCallbackTokenHash: hashValue(callbackToken), scanRequestedAt: new Date(), scanVerdictNote: "Clinic scanner callback requested; document remains quarantined" }).where(eq(supplierCorrectiveActionDocuments.id, document.id));
+    try { const response = await fetch(settings.callbackUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "supplier.document.quarantined", documentId: document.id, filename: document.originalFilename, mimeType: document.mimeType, downloadUrl: signedUrl, scanCallbackToken: callbackToken, resultPath: "/api/supplier-document-scan-result" }) }); if (!response.ok) throw new Error(`Scanner callback returned HTTP ${response.status}`); return { scanStatus: "scanning" as const, provider: "callback" as const }; } catch (error) { await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "scan_failed", scanVerdictNote: error instanceof Error ? error.message.slice(0, 1000) : "Scanner callback could not be reached" }).where(eq(supplierCorrectiveActionDocuments.id, document.id)); return { scanStatus: "scan_failed" as const, provider: "callback" as const }; }
+  }
+  await db.update(supplierCorrectiveActionDocuments).set({ scanStatus: "quarantined", scanProvider: "manual_review", scanVerdictNote: "No scanner is configured; administrator review is required before download" }).where(eq(supplierCorrectiveActionDocuments.id, document.id));
+  return { scanStatus: "quarantined" as const, provider: "manual_review" as const };
 }
