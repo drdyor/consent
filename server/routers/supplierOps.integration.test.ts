@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ workspace: { clinic: { id: 4 }, membership: { role: "admin" } }, rejectAdmin: false, insertedReminders: [] as any[], insertedCorrectiveActions: [] as any[], updates: [] as any[], settings: { id: 2, clinicId: 4, reminderDays: 30, externalDeliveryEnabled: false, deliveryChannel: "none" }, documents: [{ id: 19, clinicId: 4, marketCatalogueProductId: 7, documentType: "ce_certificate", expiresAt: new Date("2026-09-01T00:00:00.000Z"), reminderThresholdDays: 30 }], incidents: [{ id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null }], correctiveActions: [{ id: 801, clinicId: 4, supplierIncidentId: 501, status: "issued", expiresAt: new Date("2099-09-01T00:00:00.000Z") }], summaryReviews: [] as any[], summaryIncidents: [] as any[], summaryCorrectiveActions: [] as any[], existingReminders: [] as any[] }));
+const state = vi.hoisted(() => ({ workspace: { clinic: { id: 4 }, membership: { role: "admin" } }, rejectAdmin: false, insertedReminders: [] as any[], insertedCorrectiveActions: [] as any[], insertedCorrectiveDocuments: [] as any[], updates: [] as any[], settings: { id: 2, clinicId: 4, reminderDays: 30, externalDeliveryEnabled: false, deliveryChannel: "none" }, documents: [{ id: 19, clinicId: 4, marketCatalogueProductId: 7, documentType: "ce_certificate", expiresAt: new Date("2026-09-01T00:00:00.000Z"), reminderThresholdDays: 30 }], incidents: [{ id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null }], correctiveActions: [{ id: 801, clinicId: 4, supplierIncidentId: 501, status: "issued", expiresAt: new Date("2099-09-01T00:00:00.000Z") }], correctiveDocuments: [] as any[], summaryReviews: [] as any[], summaryIncidents: [] as any[], summaryCorrectiveActions: [] as any[], existingReminders: [] as any[] }));
 
 vi.mock("../db", () => ({ getDb: vi.fn(async () => ({
   select: vi.fn((shape?: any) => ({ from: (table: any) => {
     const name = table?.[Symbol.for("drizzle:Name")];
-    const rows = name === "supplierReminderSettings" ? [state.settings] : name === "supplierEvidenceDocuments" ? state.documents : name === "supplierEvidenceReminders" ? state.existingReminders : name === "supplierPerformanceReviews" ? state.summaryReviews : name === "supplierIncidents" ? shape ? state.summaryIncidents : state.incidents : name === "supplierCorrectiveActions" ? shape ? state.summaryCorrectiveActions : state.correctiveActions : name === "productInventoryLots" ? [{ id: 31, clinicId: 4, productId: 8, lotNumber: "LOT-08", quantity: "1.00" }] : name === "supplierPurchaseOrderLines" ? [{ id: 41, purchaseOrderId: 9, productId: 8, expectedQuantity: "1.00", receivedQuantity: "1.00", expectedLotNumber: "LOT-08" }] : name === "supplierPurchaseOrders" ? [{ id: 9, clinicId: 4 }] : [];
+    const rows = name === "supplierReminderSettings" ? [state.settings] : name === "supplierEvidenceDocuments" ? state.documents : name === "supplierEvidenceReminders" ? state.existingReminders : name === "supplierPerformanceReviews" ? state.summaryReviews : name === "supplierIncidents" ? shape ? state.summaryIncidents : state.incidents : name === "supplierCorrectiveActions" ? shape ? state.summaryCorrectiveActions : state.correctiveActions : name === "supplierCorrectiveActionDocuments" ? state.correctiveDocuments : name === "productInventoryLots" ? [{ id: 31, clinicId: 4, productId: 8, lotNumber: "LOT-08", quantity: "1.00" }] : name === "supplierPurchaseOrderLines" ? [{ id: 41, purchaseOrderId: 9, productId: 8, expectedQuantity: "1.00", receivedQuantity: "1.00", expectedLotNumber: "LOT-08" }] : name === "supplierPurchaseOrders" ? [{ id: 9, clinicId: 4 }] : [];
     const chain = { limit: async () => rows, then: (resolve: (value: any[]) => unknown) => Promise.resolve(rows).then(resolve) };
     const joinChain = { where: () => chain, innerJoin: () => joinChain };
     return { where: () => chain, innerJoin: () => joinChain };
   } })),
-  insert: vi.fn((table: any) => ({ values: (values: any) => { const name = table?.[Symbol.for("drizzle:Name")]; if (name === "supplierEvidenceReminders") { state.insertedReminders.push(values); state.existingReminders.push(values); } if (name === "supplierCorrectiveActions") state.insertedCorrectiveActions.push(values); return { $returningId: async () => [{ id: 77 }] }; } })),
+  insert: vi.fn((table: any) => ({ values: (values: any) => { const name = table?.[Symbol.for("drizzle:Name")]; if (name === "supplierEvidenceReminders") { state.insertedReminders.push(values); state.existingReminders.push(values); } if (name === "supplierCorrectiveActions") state.insertedCorrectiveActions.push(values); if (name === "supplierCorrectiveActionDocuments") state.insertedCorrectiveDocuments.push(values); return { $returningId: async () => [{ id: 77 }] }; } })),
   update: vi.fn(() => ({ set: (values: any) => ({ where: async () => state.updates.push(values) }) })),
 } )) }));
 vi.mock("../services/workspace", () => ({ requireWorkspace: vi.fn(async () => state.workspace), requireAdmin: vi.fn(async () => { if (state.rejectAdmin) throw new Error("Administrator permissions are required"); return state.workspace; }) }));
@@ -102,5 +102,19 @@ describe("supplier evidence and reconciliation governance", () => {
     state.summaryCorrectiveActions.splice(0, state.summaryCorrectiveActions.length, { action: { id: 921, clinicId: 4 }, incident: { id: 911, clinicId: 4 }, catalogue: { brandName: "Clinic supplier" } }, { action: { id: 922, clinicId: 99 }, incident: { id: 912, clinicId: 99 }, catalogue: { brandName: "Foreign supplier" } });
     const pack = await appRouter.createCaller(ctx as any).supplierOps.auditPack(); expect(pack.reviews.map(item => item.review.id)).toEqual([901]); expect(pack.incidents.map(item => item.incident.id)).toEqual([911]); expect(pack.correctiveActions.map(item => item.action.id)).toEqual([921]);
     state.summaryReviews.length = 0; state.summaryIncidents.length = 0; state.summaryCorrectiveActions.length = 0;
+  });
+
+  it("accepts a supplier supporting document only through an active corrective-action capability", async () => {
+    state.insertedCorrectiveDocuments.length = 0;
+    await expect(appRouter.createCaller(ctx as any).supplierOps.uploadCorrectiveActionDocument({ token: "secure-token-value-that-is-long-enough-for-validation", originalFilename: "replacement-certificate.pdf", mimeType: "application/pdf", fileBase64: "JVBERi0xLjQ=" })).resolves.toMatchObject({ originalFilename: "replacement-certificate.pdf" });
+    expect(state.insertedCorrectiveDocuments[0]).toMatchObject({ clinicId: 4, supplierCorrectiveActionId: 801, originalFilename: "replacement-certificate.pdf", uploadedBy: "supplier" });
+  });
+
+  it("allows a clinic administrator to manually escalate only overdue high-severity supplier incidents", async () => {
+    state.incidents[0] = { id: 501, clinicId: 4, status: "open", severity: "critical", dueAt: new Date("2000-01-01T00:00:00.000Z"), escalatedAt: null, resolvedAt: null, resolutionNote: null };
+    state.updates.length = 0;
+    await expect(appRouter.createCaller(ctx as any).supplierOps.escalateOverdueSupplierIncident({ incidentId: 501, escalationNote: "Escalated to the supplier quality director by registered email." })).resolves.toEqual({ success: true });
+    expect(state.updates).toContainEqual(expect.objectContaining({ escalationNote: "Escalated to the supplier quality director by registered email.", escalatedByUserId: 2 }));
+    state.incidents[0] = { id: 501, clinicId: 4, resolvedAt: null, resolutionNote: null };
   });
 });
