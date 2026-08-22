@@ -1,6 +1,6 @@
 # Aegis Consent + Shop — directive queue state
 
-**Current window:** WINDOW_C3 — `WINDOW_C3_EVIDENCE_FRESHNESS.md`
+**Current window:** ⛔ WINDOW_C4 — de-Manus migration (GATED: pause for the user’s fold-versus-standalone decision)
 **On completion:** update this file to point at the next window, then proceed.
 
 Read `HANDOVER_AEGIS_CONSENT.md` and the clinic repo's `STRATEGY.md` first. Decision
@@ -39,3 +39,4 @@ builder's; (g) each window: tests green → committed → pushed → STATE.md up
 - 2026-08-21: reorganised into consent+SHOP product (Eva: "consent and shop together").
   De-Manus moved to current (existential); shop windows S0/S1/S2 added; labs split clinic+shop.
 - 2026-08-21: WINDOW_C2 completed (Manus). Added encrypted clinic-scoped patient entities, controlled legacy linkage, patient history, time-boxed one-use public signing capabilities, immutable patient-bound snapshots, migration 0022, report, and behavioral tests. Synthetic data only. WINDOW_C3 handed over.
+- 2026-08-21: WINDOW_C3 completed (Manus). Added immutable signed-consent evidence-freshness flags, administrator review queue, deterministic manual recheck, task-UID-bound daily endpoint/configuration, migrations 0023/0024, report, and behavior tests. WINDOW_C4 is now paused pending the user’s explicit de-Manus decision.

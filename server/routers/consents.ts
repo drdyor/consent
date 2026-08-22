@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, isNull, like, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, clinics, consentAcknowledgements, consentNotarySettings, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, patientSigningLinks, patients, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
+import { auditEvents, clinics, consentAcknowledgements, consentEvidenceFreshnessFlags, consentEvidenceFreshnessSettings, consentNotarySettings, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, patientSigningLinks, patients, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
@@ -11,6 +11,7 @@ import { buildTreatmentMapConsentContext } from "../../shared/treatmentMapContex
 import { getMarketEvidenceGate } from "../services/marketCompliance";
 import { buildWithdrawalEventHash, notarizeSnapshotHash, verifyNotarizedSnapshot } from "../services/consentNotary";
 import { createPatientSigningToken, decryptPatientValue, encryptPatientIdentity, hashPatientSigningToken } from "../services/patientIdentity";
+import { createHeartbeatJob } from "../_core/heartbeat";
 
 const consentInput = z.object({
   templateId: z.number().int().positive(), productId: z.number().int().positive(), inventoryLotId: z.number().int().positive().optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), patientDateOfBirth: z.coerce.date().optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
@@ -160,6 +161,21 @@ export const consentRouter = router({
   retryNotarization: protectedProcedure.input(z.object({ recordId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user); return attemptConsentNotarization({ clinicId: workspace.clinic.id, consentRecordId: input.recordId, actorUserId: ctx.user.id });
   }),
+  freshnessFlags: protectedProcedure.input(z.object({ status: z.enum(["open", "resolved"]).optional() }).optional()).query(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const filters = [eq(consentEvidenceFreshnessFlags.clinicId, workspace.clinic.id)]; if (input?.status) filters.push(eq(consentEvidenceFreshnessFlags.status, input.status));
+    return db.select({ flag: consentEvidenceFreshnessFlags, record: consentRecords, source: productSources, product: products }).from(consentEvidenceFreshnessFlags).innerJoin(consentRecords, eq(consentEvidenceFreshnessFlags.consentRecordId, consentRecords.id)).innerJoin(productSources, eq(consentEvidenceFreshnessFlags.productSourceId, productSources.id)).innerJoin(products, eq(consentRecords.productId, products.id)).where(and(...filters)).orderBy(desc(consentEvidenceFreshnessFlags.lastDetectedAt));
+  }),
+  scanEvidenceFreshness: protectedProcedure.input(z.object({ now: z.coerce.date().optional() }).optional()).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); return runEvidenceFreshnessRecheck(workspace.clinic.id, input?.now || new Date());
+  }),
+  resolveFreshnessFlag: protectedProcedure.input(z.object({ flagId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const flag = (await db.select().from(consentEvidenceFreshnessFlags).where(and(eq(consentEvidenceFreshnessFlags.id, input.flagId), eq(consentEvidenceFreshnessFlags.clinicId, workspace.clinic.id))).limit(1))[0]; if (!flag) throw new Error("Evidence-freshness flag not found");
+    await db.update(consentEvidenceFreshnessFlags).set({ status: "resolved", resolvedAt: new Date() }).where(eq(consentEvidenceFreshnessFlags.id, flag.id)); await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: flag.consentRecordId, actorUserId: ctx.user.id, action: "consent.evidence_freshness_resolved", entityType: "consentEvidenceFreshnessFlag", entityId: String(flag.id), summary: "Informational evidence-freshness flag acknowledged by clinic administrator" }); return { success: true };
+  }),
+  activateDailyFreshnessSchedule: protectedProcedure.mutation(async ({ ctx }) => {
+    const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const existing = (await db.select().from(consentEvidenceFreshnessSettings).where(eq(consentEvidenceFreshnessSettings.clinicId, workspace.clinic.id)).limit(1))[0]; if (existing?.scheduleCronTaskUid) return { taskUid: existing.scheduleCronTaskUid, alreadyActive: true };
+    const job = await createHeartbeatJob({ name: `consent-evidence-freshness-clinic-${workspace.clinic.id}`, cron: "0 30 5 * * *", path: "/api/scheduled/consent-evidence-freshness", method: "POST", description: "Aegis Consent daily signed-consent evidence freshness recheck" }, ""); if (existing) await db.update(consentEvidenceFreshnessSettings).set({ scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id }).where(eq(consentEvidenceFreshnessSettings.id, existing.id)); else await db.insert(consentEvidenceFreshnessSettings).values({ clinicId: workspace.clinic.id, scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id }); return { taskUid: job.taskUid, nextExecutionAt: job.nextExecutionAt, alreadyActive: false };
+  }),
   patientHistory: protectedProcedure.input(z.object({ patientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
     const patient = (await db.select({ id: patients.id, identityHash: patients.identityHash }).from(patients).where(and(eq(patients.id, input.patientId), eq(patients.clinicId, workspace.clinic.id))).limit(1))[0]; if (!patient) throw new Error("Patient record not found");
@@ -271,6 +287,19 @@ export async function attemptConsentNotarization(input: { clinicId: number; cons
   }
   await db.update(consentRecords).set({ notaryStatus: "notary_pending", notaryAttemptCount: attemptCount, notaryLastAttemptAt: attemptedAt, notaryError: result.error }).where(eq(consentRecords.id, record.id));
   await db.insert(auditEvents).values({ clinicId: input.clinicId, consentRecordId: record.id, actorUserId: input.actorUserId, action: "consent.notary_pending", entityType: "consentRecord", entityId: String(record.id), summary: `Snapshot notarization pending: ${result.error}` }); return result;
+}
+
+export async function runEvidenceFreshnessRecheck(clinicId: number, now = new Date()) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); const signed = await db.select({ record: consentRecords, source: productSources, product: products }).from(consentRecords).innerJoin(productSources, eq(consentRecords.sourceId, productSources.id)).innerJoin(products, eq(consentRecords.productId, products.id)).where(and(eq(consentRecords.clinicId, clinicId), eq(consentRecords.status, "signed")));
+  let flagged = 0; for (const row of signed) {
+    const snapshot = (row.record.signedSnapshot || {}) as { source?: { reviewStatus?: string }; product?: { registryStatus?: string } }; const checks: Array<{ flagType: "source_superseded" | "registry_status_changed"; snapshotValue: string | null; currentValue: string }> = [];
+    if (row.source.reviewStatus === "superseded") checks.push({ flagType: "source_superseded", snapshotValue: snapshot.source?.reviewStatus || "approved", currentValue: "superseded" }); const snapshotRegistryStatus = snapshot.product?.registryStatus;
+    if (snapshotRegistryStatus && snapshotRegistryStatus !== row.product.registryStatus) checks.push({ flagType: "registry_status_changed", snapshotValue: snapshotRegistryStatus, currentValue: row.product.registryStatus });
+    for (const check of checks) { const existing = (await db.select().from(consentEvidenceFreshnessFlags).where(and(eq(consentEvidenceFreshnessFlags.consentRecordId, row.record.id), eq(consentEvidenceFreshnessFlags.flagType, check.flagType))).limit(1))[0]; if (existing) { await db.update(consentEvidenceFreshnessFlags).set({ status: "open", currentValue: check.currentValue, snapshotValue: check.snapshotValue, lastDetectedAt: now, resolvedAt: null }).where(eq(consentEvidenceFreshnessFlags.id, existing.id)); continue; }
+      await db.insert(consentEvidenceFreshnessFlags).values({ clinicId, consentRecordId: row.record.id, productSourceId: row.source.id, flagType: check.flagType, snapshotValue: check.snapshotValue, currentValue: check.currentValue, status: "open", detectedAt: now, lastDetectedAt: now }); await db.insert(auditEvents).values({ clinicId, consentRecordId: row.record.id, action: "consent.evidence_freshness_flagged", entityType: "consentEvidenceFreshnessFlag", entityId: `${row.record.id}:${check.flagType}`, summary: `Signed consent flagged informationally: ${check.flagType.replaceAll("_", " ")}` }); flagged += 1;
+    }
+  }
+  await db.update(consentEvidenceFreshnessSettings).set({ lastRunAt: now }).where(eq(consentEvidenceFreshnessSettings.clinicId, clinicId)); return { scanned: signed.length, flagged };
 }
 
 async function getActivePatientSigningLink(token: string) {

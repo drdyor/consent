@@ -162,6 +162,20 @@
       "when": 1787316300590,
       "tag": "0022_strong_beyonder",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1787435478062,
+      "tag": "0023_fast_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1787435506617,
+      "tag": "0024_clammy_obadiah_stane",
+      "breakpoints": true
     }
   ]
 }

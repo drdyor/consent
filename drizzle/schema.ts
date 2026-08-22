@@ -574,6 +574,32 @@ export const auditEvents = mysqlTable("auditEvents", {
   index("audit_event_idx").on(table.createdAt),
 ]);
 
+export const consentEvidenceFreshnessFlags = mysqlTable("consentEvidenceFreshnessFlags", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  productSourceId: int("productSourceId").notNull().references(() => productSources.id),
+  flagType: mysqlEnum("flagType", ["source_superseded", "registry_status_changed"]).notNull(),
+  snapshotValue: varchar("snapshotValue", { length: 160 }),
+  currentValue: varchar("currentValue", { length: 160 }).notNull(),
+  status: mysqlEnum("status", ["open", "resolved"]).default("open").notNull(),
+  detectedAt: timestamp("detectedAt").defaultNow().notNull(),
+  lastDetectedAt: timestamp("lastDetectedAt").defaultNow().notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("consent_freshness_unique").on(table.consentRecordId, table.flagType), index("consent_freshness_clinic_status_idx").on(table.clinicId, table.status), index("consent_freshness_source_idx").on(table.productSourceId)]);
+
+export const consentEvidenceFreshnessSettings = mysqlTable("consentEvidenceFreshnessSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  lastRunAt: timestamp("lastRunAt"),
+  updatedByUserId: int("updatedByUserId").references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("consent_freshness_settings_clinic_unique").on(table.clinicId), index("consent_freshness_settings_task_idx").on(table.scheduleCronTaskUid)]);
+
 export const consentNotarySettings = mysqlTable("consentNotarySettings", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),

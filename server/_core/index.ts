@@ -10,9 +10,10 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
 import { and, eq } from "drizzle-orm";
-import { supplierCorrectiveActionDocuments, supplierEscalationSettings, supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
+import { consentEvidenceFreshnessSettings, supplierCorrectiveActionDocuments, supplierEscalationSettings, supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { requireAdmin } from "../services/workspace";
+import { runEvidenceFreshnessRecheck } from "../routers/consents";
 import { recordSupplierDocumentScanVerdict, runCommercialDocumentScanFollowup, runEvidenceExpiryScan, runOverdueIncidentDeliveryScan } from "../routers/supplierOps";
 import { storageGetSignedUrl } from "../storage";
 import { canReleaseSupplierDocument } from "../services/supplierEscalation";
@@ -113,6 +114,19 @@ async function startServer() {
     } catch (error) {
       console.error("[SupplierEscalation] scheduled scan failed", error);
       return res.status(500).json({ error: "Supplier escalation scan failed", timestamp: new Date().toISOString() });
+    }
+  });
+  app.post("/api/scheduled/consent-evidence-freshness", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "Scheduled-task identity required" });
+      const db = await getDb(); if (!db) return res.status(503).json({ error: "Database unavailable" });
+      const setting = (await db.select().from(consentEvidenceFreshnessSettings).where(eq(consentEvidenceFreshnessSettings.scheduleCronTaskUid, user.taskUid)).limit(1))[0];
+      if (!setting) return res.json({ ok: true, skipped: "orphan" });
+      return res.json({ ok: true, ...(await runEvidenceFreshnessRecheck(setting.clinicId)) });
+    } catch (error) {
+      console.error("[ConsentFreshness] scheduled recheck failed", error);
+      return res.status(500).json({ error: "Consent evidence freshness recheck failed", timestamp: new Date().toISOString() });
     }
   });
   // tRPC API
