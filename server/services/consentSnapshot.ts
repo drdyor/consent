@@ -14,6 +14,7 @@ export function buildSignedSnapshot(input: {
   inventoryLot?: unknown;
   practitioner: unknown;
   clinic: unknown;
+  patient?: { id: number; identityHash: string } | null;
   disclosures: Disclosure[];
   signerName: string;
   signingMethod: "typed" | "drawn";
@@ -29,6 +30,7 @@ export function buildSignedSnapshot(input: {
     inventoryLot: input.inventoryLot || null,
     practitioner: input.practitioner,
     clinic: input.clinic,
+    patient: input.patient || null,
     disclosures: input.disclosures,
     signer: { name: input.signerName, method: input.signingMethod, signatureUrl: input.signatureUrl, signedAt: input.signedAt },
     acknowledgements: input.disclosures.filter(disclosure => disclosure.requiredAcknowledgement).map(disclosure => ({ disclosureBlockId: disclosure.id, title: disclosure.title, acknowledgedAt: input.signedAt })),

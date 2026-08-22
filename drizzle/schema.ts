@@ -56,6 +56,18 @@ export const clinicMembers = mysqlTable("clinicMembers", {
   index("clinic_member_user_idx").on(table.userId),
 ]);
 
+export const patients = mysqlTable("patients", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  identityHash: varchar("identityHash", { length: 128 }).notNull(),
+  firstNameCiphertext: text("firstNameCiphertext").notNull(),
+  lastNameCiphertext: text("lastNameCiphertext").notNull(),
+  dateOfBirthCiphertext: text("dateOfBirthCiphertext"),
+  emailCiphertext: text("emailCiphertext"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("patient_clinic_identity_unique").on(table.clinicId, table.identityHash), index("patient_clinic_idx").on(table.clinicId)]);
+
 export const practitionerProfiles = mysqlTable("practitionerProfiles", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),
@@ -256,6 +268,7 @@ export const consentRecords = mysqlTable("consentRecords", {
   templateId: int("templateId").notNull().references(() => consentTemplates.id),
   templateRevision: int("templateRevision").notNull(),
   practitionerUserId: int("practitionerUserId").notNull().references(() => users.id),
+  patientId: int("patientId").references(() => patients.id),
   productId: int("productId").notNull().references(() => products.id),
   sourceId: int("sourceId").notNull().references(() => productSources.id),
   inventoryLotId: int("inventoryLotId").references(() => productInventoryLots.id),
@@ -293,6 +306,7 @@ export const consentRecords = mysqlTable("consentRecords", {
 }, table => [
   index("record_clinic_idx").on(table.clinicId),
   index("record_patient_idx").on(table.patientLastName, table.patientFirstName),
+  index("record_patient_entity_idx").on(table.patientId),
   index("record_status_idx").on(table.status),
   index("record_signed_idx").on(table.signedAt),
 ]);
@@ -328,6 +342,7 @@ export const treatmentMapEntries = mysqlTable("treatmentMapEntries", {
 export const consentPhotos = mysqlTable("consentPhotos", {
   id: int("id").autoincrement().primaryKey(),
   consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  patientId: int("patientId").references(() => patients.id),
   kind: mysqlEnum("kind", ["before", "after", "other"]).notNull(),
   storageKey: varchar("storageKey", { length: 500 }).notNull(),
   photoUrl: text("photoUrl").notNull(),
@@ -340,12 +355,25 @@ export const consentPhotos = mysqlTable("consentPhotos", {
 export const treatmentCourseEntries = mysqlTable("treatmentCourseEntries", {
   id: int("id").autoincrement().primaryKey(),
   consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  patientId: int("patientId").references(() => patients.id),
   sessionNumber: int("sessionNumber").notNull(),
   sessionAt: timestamp("sessionAt").notNull(),
   clinicalNote: text("clinicalNote").notNull(),
   createdByUserId: int("createdByUserId").notNull().references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("course_record_idx").on(table.consentRecordId)]);
+
+export const patientSigningLinks = mysqlTable("patientSigningLinks", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  patientId: int("patientId").notNull().references(() => patients.id),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("patient_signing_token_unique").on(table.tokenHash), index("patient_signing_record_idx").on(table.consentRecordId), index("patient_signing_expiry_idx").on(table.expiresAt)]);
 
 export const supplierPurchaseOrders = mysqlTable("supplierPurchaseOrders", {
   id: int("id").autoincrement().primaryKey(),
