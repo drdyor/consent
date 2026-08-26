@@ -152,3 +152,4 @@
 - [x] Support both clinic-configured quarantine scan callbacks and optional commercial malware-scanning adapter configuration without storing provider credentials in application records.
 - [x] Add delivery and scanning configuration status, retry/attempt audit, and safe fallback states that never expose an unscanned or unsafe document.
 - [ ] Execute the drdyor/consent directive queue from WINDOW_C1 in order and pause for a user decision at WINDOW_C4 before any de-Manus work.
+- [x] Inspect the user’s newer changes and refresh every recovery bundle, checksum, remote verification, and managed-project checkpoint to include them.
