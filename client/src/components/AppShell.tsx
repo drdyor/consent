@@ -12,6 +12,7 @@ import {
   PackageCheck,
   LayoutDashboard,
   Menu,
+  Radar,
   Settings,
   ShieldCheck,
   X,
@@ -25,6 +26,7 @@ const navigation = [
   { label: "Templates & sources", href: "/templates", icon: BookOpenCheck, adminOnly: true },
   { label: "EU product catalogue", href: "/catalogue", icon: LibraryBig, adminOnly: true },
   { label: "Supplier governance", href: "/supply-governance", icon: PackageCheck, adminOnly: true },
+  { label: "Evidence freshness", href: "/evidence-freshness", icon: Radar, adminOnly: true },
   { label: "Records", href: "/records", icon: FileText },
 ];
 
