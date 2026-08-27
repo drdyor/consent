@@ -1,0 +1,347 @@
+
+### OK workspace.overview (auto-provision fresh clinic, admin)
+{
+ "clinic": {
+  "id": 1,
+  "ownerUserId": 1,
+  "name": "New clinic",
+  "logoUrl": null,
+  "addressLine": null,
+  "contactEmail": null,
+  "contactPhone": null,
+  "jurisdiction": "PL",
+  "complianceMarket": "pl_eu",
+  "usStateCode": null,
+  "usStateAuthority": null,
+  "usStateEvidenceUrl": null,
+  "usStateEvidenceVerifiedAt": null,
+  "usStateEvidenceVerifiedByUserId": null,
+  "defaultLanguage": "pl",
+  "createdAt": "2026-08-27T20:37:43.000Z",
+  "updatedAt": "2026-08-27T20:37:43.000Z"
+ },
+ "membership": {
+  "id": 1,
+  "clinicId": 1,
+  "userId": 1,
+  "role": "admin",
+  "createdAt": "2026-08-27T20:37:43.000Z",
+  "updatedAt": "2026-08-27T20:37:43.000Z"
+ },
+ "profile": {
+  "id": 1,
+  "clinicId": 1,
+  "userId": 1,
+  "displayName": "SYNTH-Eva Operator",
+  "professionalTitle": null,
+  "registrationNumber": null,
+  "registrationAuthority": null,
+  "licenseVerifiedAt": null,
+  "createdAt": "2026-08-27T20:37:43.000Z",
+  "updatedAt": "2026-08-27T20:37:43.000Z"
+ },
+ "metrics": {
+  "sent": 0,
+  "signed": 0,
+  "templates": 0
+ },
+ "recent": []
+}
+
+### OK createProductSource SYNTH Filler (with registry evidence)
+{
+ "productId": 1,
+ "sourceId": 1
+}
+
+### OK verifyCanonicalSource p1
+{
+ "success": true,
+ "verifiedAt": "2026-08-27T20:37:43.756Z"
+}
+
+### OK approveSource p1 (market evidence gate must pass)
+{
+ "success": true
+}
+
+### OK createProductSource SYNTH NoEvidence (no registry evidence)
+{
+ "productId": 2,
+ "sourceId": 2
+}
+
+### OK verifyCanonicalSource p2 (attestation alone is not market evidence)
+{
+ "success": true,
+ "verifiedAt": "2026-08-27T20:37:43.922Z"
+}
+
+### ERR approveSource p2 (EXPECT REFUSAL: eu_registry_missing)
+Poland/EU patient-ready use requires verified registry evidence for the selected source.
+
+### OK createPurchaseOrder (3 lines)
+{
+ "purchaseOrderId": 1
+}
+
+### line ids
+{
+ "lineFresh": 1,
+ "lineExpired": 2,
+ "lineNoEvidence": 3
+}
+
+### ERR TRAP receivePurchaseLine WITHOUT unit cost (EXPECT REFUSAL)
+[
+  {
+    "expected": "number",
+    "code": "invalid_type",
+    "path": [
+      "unitCostBought"
+    ],
+    "message": "Invalid input: expected number, received undefined"
+  }
+]
+
+### OK receivePurchaseLine fresh lot (supplier+cost+expiry)
+{
+ "lotId": 1,
+ "orderStatus": "partially_received",
+ "expiryState": "ok"
+}
+
+### OK receivePurchaseLine ALREADY-EXPIRED lot (received but flagged)
+{
+ "lotId": 2,
+ "orderStatus": "partially_received",
+ "expiryState": "expired"
+}
+
+### OK receivePurchaseLine lot for evidence-unapproved product
+{
+ "lotId": 3,
+ "orderStatus": "received",
+ "expiryState": "ok"
+}
+
+### ERR TRAP listLotForSale on EXPIRED lot (EXPECT REFUSAL)
+Expired lot blocked from sale: this batch is past its expiry date and cannot be listed or sold
+
+### ERR TRAP listLotForSale on evidence-unapproved product lot (EXPECT REFUSAL)
+Lot blocked from sale: the product source has not been approved for patient-ready use
+
+### OK listLotForSale fresh approved lot
+{
+ "success": true,
+ "lotId": 1
+}
+
+### OK recordSale 12 of 20 (stock reconciles)
+{
+ "success": true,
+ "soldQuantity": 12,
+ "onHand": 8
+}
+
+### ERR TRAP recordSale 9 with 8 on hand (EXPECT REFUSAL: never negative)
+Stock integrity failure: cannot sell 9 from a lot with only 8 on hand — stock never goes negative
+
+### OK recordSale exactly remaining 8 (allowed)
+{
+ "success": true,
+ "soldQuantity": 20,
+ "onHand": 0
+}
+
+### ERR TRAP recordSale from emptied lot (EXPECT REFUSAL: no stock)
+Lot blocked from sale: no on-hand stock remains in this batch
+
+### OK shop.sellerCatalog
+[
+ {
+  "product": {
+   "id": 1,
+   "name": "SYNTH Filler",
+   "manufacturer": "SYNTH Labs",
+   "category": "ha_filler",
+   "isActive": true,
+   "sellerListingStatus": "listed",
+   "sellPriceNote": null
+  },
+  "source": {
+   "id": 1,
+   "reviewStatus": "approved",
+   "jurisdiction": "PL",
+   "documentKind": "spc"
+  },
+  "evidenceGate": {
+   "eligible": true,
+   "code": "ready",
+   "message": "Poland/EU registry evidence is present."
+  },
+  "sellable": true,
+  "lots": [
+   {
+    "id": 1,
+    "lotNumber": "LOT-FRESH",
+    "expiryDate": "2028-12-31T00:00:00.000Z",
+    "quantityUnit": "units",
+    "receivedQuantity": 20,
+    "soldQuantity": 20,
+    "onHand": 0,
+    "supplierName": "MedSupply SYNTH",
+    "unitCostBought": "150.00",
+    "costCurrency": "PLN",
+    "expiryState": "ok",
+    "stockState": "out_of_stock",
+    "listedForSaleAt": "2026-08-27T20:37:44.000Z",
+    "delistedAt": null,
+    "delistReason": null,
+    "isListed": true,
+    "saleBlocked": true
+   },
+   {
+    "id": 2,
+    "lotNumber": "LOT-EXPIRED",
+    "expiryDate": "2024-01-01T00:00:00.000Z",
+    "quantityUnit": "units",
+    "receivedQuantity": 10,
+    "soldQuantity": 0,
+    "onHand": 10,
+    "supplierName": "MedSupply SYNTH",
+    "unitCostBought": "90.00",
+    "costCurrency": "PLN",
+    "expiryState": "expired",
+    "stockState": "in_stock",
+    "listedForSaleAt": null,
+    "delistedAt": null,
+    "delistReason": null,
+    "isListed": false,
+    "saleBlocked": true
+   }
+  ],
+  "nearExpiryDays": 90,
+  "lowStockThreshold": 5
+ },
+ {
+  "product": {
+   "id": 2,
+   "name": "SYNTH NoEvidence",
+   "manufacturer": "SYNTH Labs",
+   "category": "medical_device",
+   "isActive": true,
+   "sellerListingStatus": "not_listed",
+   "sellPriceNote": null
+  },
+  "source": {
+   "id": 2,
+   "reviewStatus": "pending",
+   "jurisdiction": "PL",
+   "documentKind": "ifu"
+  },
+  "evidenceGate": {
+   "eligible": false,
+   "code": "eu_registry_missing",
+   "message": "Poland/EU patient-ready use requires verified registry evidence f
+
+### catalog summary
+[
+ {
+  "product": "SYNTH Filler",
+  "sellable": true,
+  "gate": "ready",
+  "price": "Price set by operator",
+  "lots": [
+   {
+    "lot": "LOT-FRESH",
+    "expiry": "ok",
+    "stock": "out_of_stock",
+    "onHand": 0,
+    "listed": true,
+    "blocked": true
+   },
+   {
+    "lot": "LOT-EXPIRED",
+    "expiry": "expired",
+    "stock": "in_stock",
+    "onHand": 10,
+    "listed": false,
+    "blocked": true
+   }
+  ]
+ },
+ {
+  "product": "SYNTH NoEvidence",
+  "sellable": false,
+  "gate": "eu_registry_missing",
+  "price": "Price set by operator",
+  "lots": [
+   {
+    "lot": "LOT-NOEV",
+    "expiry": "ok",
+    "stock": "low_stock",
+    "onHand": 5,
+    "listed": false,
+    "blocked": true
+   }
+  ]
+ }
+]
+
+### OK shop.stockAlerts
+{
+ "expired": [
+  {
+   "lotId": 2,
+   "productName": "SYNTH Filler",
+   "lotNumber": "LOT-EXPIRED",
+   "expiryDate": "2024-01-01T00:00:00.000Z",
+   "onHand": 10,
+   "quantityUnit": "units",
+   "expiryState": "expired",
+   "stockState": "in_stock",
+   "isListed": false
+  }
+ ],
+ "nearExpiry": [],
+ "lowStock": [
+  {
+   "lotId": 1,
+   "productName": "SYNTH Filler",
+   "lotNumber": "LOT-FRESH",
+   "expiryDate": "2028-12-31T00:00:00.000Z",
+   "onHand": 0,
+   "quantityUnit": "units",
+   "expiryState": "ok",
+   "stockState": "out_of_stock",
+   "isListed": true
+  },
+  {
+   "lotId": 3,
+   "productName": "SYNTH NoEvidence",
+   "lotNumber": "LOT-NOEV",
+   "expiryDate": "2028-12-31T00:00:00.000Z",
+   "onHand": 5,
+   "quantityUnit": "units",
+   "expiryState": "ok",
+   "stockState": "low_stock",
+   "isListed": false
+  }
+ ],
+ "missingExpiry": []
+}
+
+### alerts summary
+{
+ "expired": [
+  "LOT-EXPIRED"
+ ],
+ "lowStock": [
+  "LOT-FRESH",
+  "LOT-NOEV"
+ ],
+ "nearExpiry": []
+}
+
+SMOKE COMPLETE
