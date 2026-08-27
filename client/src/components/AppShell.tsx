@@ -14,6 +14,7 @@ import {
   Menu,
   Settings,
   ShieldCheck,
+  ShoppingBag,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -25,6 +26,7 @@ const navigation = [
   { label: "Templates & sources", href: "/templates", icon: BookOpenCheck, adminOnly: true },
   { label: "EU product catalogue", href: "/catalogue", icon: LibraryBig, adminOnly: true },
   { label: "Supplier governance", href: "/supply-governance", icon: PackageCheck, adminOnly: true },
+  { label: "Seller catalog", href: "/seller-catalog", icon: ShoppingBag, adminOnly: true },
   { label: "Records", href: "/records", icon: FileText },
 ];
 

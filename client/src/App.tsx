@@ -14,6 +14,7 @@ import Records from "./pages/Records";
 import TreatmentMap from "./pages/TreatmentMap";
 import MarketCatalogue from "./pages/MarketCatalogue";
 import SupplyGovernance from "./pages/SupplyGovernance";
+import SellerCatalog from "./pages/SellerCatalog";
 import SupplierCorrectiveAction from "./pages/SupplierCorrectiveAction";
 import PatientSign from "./pages/PatientSign";
 import PatientHistory from "./pages/PatientHistory";
@@ -24,7 +25,7 @@ function Router() {
   const [isPatientSigningRoute] = useRoute("/patient-sign/:token");
   if (isSupplierResponseRoute) return <SupplierCorrectiveAction />;
   if (isPatientSigningRoute) return <PatientSign />;
-  return <AppShell><Switch><Route path="/treatment-map/:id" component={TreatmentMap} /><Route path="/review/:id" component={ReviewConsent} /><Route path="/patients/:id" component={PatientHistory} /><Route path="/evidence-freshness" component={EvidenceFreshness} /><Route path="/" component={Home} /><Route path="/create" component={CreateConsent} /><Route path="/templates" component={Templates} /><Route path="/catalogue" component={MarketCatalogue} /><Route path="/supply-governance" component={SupplyGovernance} /><Route path="/records" component={Records} /><Route path="/profile" component={Profile} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></AppShell>;
+  return <AppShell><Switch><Route path="/treatment-map/:id" component={TreatmentMap} /><Route path="/review/:id" component={ReviewConsent} /><Route path="/patients/:id" component={PatientHistory} /><Route path="/evidence-freshness" component={EvidenceFreshness} /><Route path="/" component={Home} /><Route path="/create" component={CreateConsent} /><Route path="/templates" component={Templates} /><Route path="/catalogue" component={MarketCatalogue} /><Route path="/supply-governance" component={SupplyGovernance} /><Route path="/seller-catalog" component={SellerCatalog} /><Route path="/records" component={Records} /><Route path="/profile" component={Profile} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></AppShell>;
 }
 
 function App() {
