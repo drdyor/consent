@@ -7,7 +7,7 @@ import { requireAdmin, requireWorkspace } from "../services/workspace";
 import { getMarketEvidenceGate } from "../services/marketCompliance";
 import { findStarterTemplate, starterTemplateLibrary, STARTER_REVIEW_NOTICE } from "../../shared/starterTemplateLibrary";
 
-const templateSections = z.array(z.object({ id: z.string(), title: z.string().min(1), body: z.string().min(1), required: z.boolean() }));
+const templateSections = z.array(z.object({ id: z.string(), title: z.string().min(1), body: z.string().min(1), required: z.boolean(), condition: z.string().max(500).optional() }));
 const sourceDisclosure = z.object({ scope: z.enum(["product", "area"]), treatmentAreaKey: z.string().max(64).optional(), kind: z.enum(["contraindication", "warning", "precaution", "adverse_event"]), title: z.string().min(2).max(255), body: z.string().min(2).max(16000), requiredAcknowledgement: z.boolean().default(true) });
 const optionalHttpsUrl = z.string().url().refine(url => url.startsWith("https://"), "Evidence URL must use HTTPS").optional();
 
@@ -18,11 +18,11 @@ export const catalogRouter = router({
     if (!db) throw new Error("Database unavailable");
     return db.select().from(consentTemplates).where(or(eq(consentTemplates.clinicId, workspace.clinic.id), and(eq(consentTemplates.status, "active"), eq(consentTemplates.isStarterTemplate, true))));
   }),
-  createTemplate: protectedProcedure.input(z.object({ name: z.string().min(3).max(160), procedureKey: z.string().min(3).max(100), description: z.string().max(1000).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), requiresProduct: z.boolean().default(true), sections: templateSections })).mutation(async ({ ctx, input }) => {
+  createTemplate: protectedProcedure.input(z.object({ name: z.string().min(3).max(160), procedureKey: z.string().min(3).max(100), description: z.string().max(1000).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), requiresProduct: z.boolean().default(true), renderEngine: z.enum(["sections", "surveyjs"]).default("sections"), sections: templateSections })).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
-    const result = await db.insert(consentTemplates).values({ clinicId: workspace.clinic.id, createdByUserId: ctx.user.id, name: input.name, procedureKey: input.procedureKey, description: input.description, jurisdiction: input.jurisdiction, language: input.language, requiresProduct: input.requiresProduct, sections: input.sections, status: "active" }).$returningId();
+    const result = await db.insert(consentTemplates).values({ clinicId: workspace.clinic.id, createdByUserId: ctx.user.id, name: input.name, procedureKey: input.procedureKey, description: input.description, jurisdiction: input.jurisdiction, language: input.language, requiresProduct: input.requiresProduct, renderEngine: input.renderEngine, sections: input.sections, status: "active" }).$returningId();
     return { id: result[0]?.id };
   }),
   templateLibrary: protectedProcedure.query(async ({ ctx }) => {
