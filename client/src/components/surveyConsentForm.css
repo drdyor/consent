@@ -1,0 +1,91 @@
+/* Aegis Consent theming for the opt-in SurveyJS renderer.
+   Matches the clinical paper look (light) and stays legible in dark mode.
+   Only CSS variables + light structural overrides; no SurveyJS themes package needed. */
+
+.aegis-survey {
+  --sjs-font-family: inherit;
+  --sjs-corner-radius: 16px;
+  --sjs-base-unit: 7px;
+  --sjs-primary-backcolor: #24453e;
+  --sjs-primary-backcolor-dark: #19362f;
+  --sjs-primary-backcolor-light: #edf1ea;
+  --sjs-primary-forecolor: #ffffff;
+  --sjs-general-backcolor: #fffefd;
+  --sjs-general-backcolor-dim: transparent;
+  --sjs-general-backcolor-dim-light: #fcfbf8;
+  --sjs-general-forecolor: #3c4740;
+  --sjs-general-forecolor-light: #6b7168;
+  --sjs-general-dim-forecolor: #24453e;
+  --sjs-general-dim-forecolor-light: #5f645d;
+  --sjs-questionpanel-backcolor: #fffefd;
+  --sjs-questionpanel-cornerRadius: 16px;
+  --sjs-editorpanel-backcolor: #fffefd;
+  --sjs-border-default: #e5dfd5;
+  --sjs-border-light: #eee9df;
+  --sjs-border-inside: #eee9df;
+  --sjs-special-red: #7a3b2e;
+  --sjs-shadow-small: 0 0 0 1px #e5dfd5;
+  --sjs-shadow-small-reset: 0 0 0 0 transparent;
+  --sjs-shadow-inner: inset 0 0 0 1px #ded7cb;
+  --sjs-shadow-inner-reset: inset 0 0 0 0 transparent;
+  --sjs-shadow-medium: 0 0 0 1px #e5dfd5;
+  --sjs-shadow-large: 0 0 0 1px #e5dfd5;
+}
+
+.dark .aegis-survey {
+  --sjs-primary-backcolor: #87ae9b;
+  --sjs-primary-backcolor-dark: #a3c4b3;
+  --sjs-primary-backcolor-light: #23413a;
+  --sjs-primary-forecolor: #101f1b;
+  --sjs-general-backcolor: #1d322c;
+  --sjs-general-backcolor-dim-light: #1a2d28;
+  --sjs-general-forecolor: #d9e2dc;
+  --sjs-general-forecolor-light: #9fb0a7;
+  --sjs-general-dim-forecolor: #e8efe9;
+  --sjs-general-dim-forecolor-light: #b9c6be;
+  --sjs-questionpanel-backcolor: #1d322c;
+  --sjs-editorpanel-backcolor: #1d322c;
+  --sjs-border-default: #33514a;
+  --sjs-border-light: #2b463f;
+  --sjs-border-inside: #2b463f;
+  --sjs-special-red: #e2a294;
+  --sjs-shadow-small: 0 0 0 1px #33514a;
+  --sjs-shadow-inner: inset 0 0 0 1px #3c5c53;
+  --sjs-shadow-medium: 0 0 0 1px #33514a;
+  --sjs-shadow-large: 0 0 0 1px #33514a;
+}
+
+/* Keep the survey flush inside our clinical panels. */
+.aegis-survey .sd-root-modern {
+  background: transparent;
+}
+.aegis-survey .sd-body.sd-body--static {
+  max-width: none;
+  padding: 0;
+}
+.aegis-survey .sd-page {
+  padding: 0;
+}
+.aegis-survey .sd-title.sd-container-modern__title {
+  padding: 0 0 12px;
+  box-shadow: none;
+  background: transparent;
+}
+.aegis-survey .sd-panel__title {
+  font-weight: 600;
+  color: var(--sjs-general-dim-forecolor);
+}
+.aegis-survey .sd-html p {
+  margin: 0 0 0.6em;
+  line-height: 1.6;
+  font-size: 0.875rem;
+}
+.aegis-survey .sd-html ul {
+  margin: 0 0 0.6em 1.1em;
+  list-style: disc;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.aegis-survey .sd-item__control-label {
+  font-size: 0.875rem;
+}
