@@ -1,0 +1,176 @@
+
+### OK receivePurchaseLine LOT-FRESH-2 (30 units for outbound sale)
+{
+ "lotId": 5,
+ "orderStatus": "received",
+ "expiryState": "ok"
+}
+
+### OK listLotForSale LOT-FRESH-2
+{
+ "success": true,
+ "lotId": 5
+}
+
+### OK createSalesOrder SO-S2A (line A unallocated, line B allocated)
+{
+ "salesOrderId": 2
+}
+
+### sales order line ids
+{
+ "lineA": 3,
+ "lineB": 4
+}
+
+### OK confirmSalesOrder
+{
+ "success": true
+}
+
+### ERR TRAP shipSalesOrder with UNALLOCATED line A (EXPECT REFUSAL)
+Order lot traceability failure: line 3 has no allocated stock lot — a shipped product line must reference a specific lot with expiry
+
+### ERR TRAP allocateOrderLine to EXPIRED lot (EXPECT REFUSAL)
+Order lot traceability failure: only a lot listed on the seller catalog can be allocated to a sales order
+
+### OK allocateOrderLine A -> LOT-FRESH-2
+{
+ "success": true
+}
+
+### OK setLineSellPrice line A = 200 PLN (operator content)
+{
+ "success": true
+}
+
+### OK shipSalesOrder (draws down LOT-FRESH-2 by 15)
+{
+ "success": true,
+ "shippedLines": [
+  {
+   "lineId": 3,
+   "lotId": 5,
+   "lotNumber": "LOT-FRESH-MTBZUJF4"
+  },
+  {
+   "lineId": 4,
+   "lotId": 5,
+   "lotNumber": "LOT-FRESH-MTBZUJF4"
+  }
+ ]
+}
+
+### ERR TRAP issueInvoice with capturePayment field (EXPECT REFUSAL: strict schema)
+[
+  {
+    "code": "unrecognized_keys",
+    "keys": [
+      "capturePayment",
+      "cardNumber"
+    ],
+    "path": [],
+    "message": "Unrecognized keys: \"capturePayment\", \"cardNumber\""
+  }
+]
+
+### OK deliverSalesOrder
+{
+ "success": true
+}
+
+### OK issueInvoice INV-S2A-001 (immutable, issued-not-collected)
+{
+ "invoiceId": 1,
+ "snapshotHash": "391215fdec073419e031b112fe546c0fff958247ed982b136f760fe4b8ffb14c",
+ "status": "issued_not_collected"
+}
+
+### ERR TRAP issueInvoice AGAIN (EXPECT REFUSAL: immutable, never reissued)
+Invoice INV-S2A-MTBZUJF4 already exists for this order — invoices are immutable and never reissued
+
+### final order state
+{
+ "status": "delivered",
+ "invoice": {
+  "invoiceNumber": "INV-S2A-MTBZUJF4",
+  "status": "issued_not_collected",
+  "snapshotHash": "391215fdec073419e031b112fe546c0fff958247ed982b136f760fe4b8ffb14c"
+ }
+}
+
+### sealed invoice snapshot
+{
+ "kind": "sales_invoice",
+ "buyer": {
+  "name": "SYNTH Clinic Sliema",
+  "clinicId": null
+ },
+ "lines": [
+  {
+   "lot": {
+    "lotNumber": "LOT-FRESH-MTBZUJF4",
+    "expiryDate": "2028-06-30T00:00:00.000Z"
+   },
+   "price": {
+    "currency": "PLN",
+    "lineTotal": 2000,
+    "unitSellPrice": 200
+   },
+   "lineId": 3,
+   "product": {
+    "name": "SYNTH Filler",
+    "manufacturer": "SYNTH Labs"
+   },
+   "quantity": 10,
+   "quantityUnit": "units"
+  },
+  {
+   "lot": {
+    "lotNumber": "LOT-FRESH-MTBZUJF4",
+    "expiryDate": "2028-06-30T00:00:00.000Z"
+   },
+   "price": {
+    "statement": "Price not recorded. Pricing is operator content and no amount was entered."
+   },
+   "lineId": 4,
+   "product": {
+    "name": "SYNTH Filler",
+    "manufacturer": "SYNTH Labs"
+   },
+   "quantity": 5,
+   "quantityUnit": "units"
+  }
+ ],
+ "order": {
+  "id": 2,
+  "orderedAt": "2026-08-27T20:47:18.000Z",
+  "shippedAt": "2026-08-27T20:47:18.000Z",
+  "deliveredAt": "2026-08-27T20:47:18.000Z",
+  "orderNumber": "SO-S2A-MTBZUJF4",
+  "shippingAddress": "1 Synthetic Street, Sliema, Malta"
+ },
+ "total": {
+  "statement": "No total computed: one or more lines have no recorded price, or currencies differ."
+ },
+ "charge": {
+  "status": "issued_not_collected",
+  "statement": "Nothing was charged and nothing will be charged by this system. Collection is an operator decision outside this software."
+ },
+ "seller": {
+  "id": 1,
+  "name": "New clinic",
+  "jurisdiction": "PL"
+ },
+ "issuedAt": "2026-08-27T20:47:17.977Z",
+ "invoiceNumber": "INV-S2A-MTBZUJF4"
+}
+
+### stock reconciliation LOT-FRESH-2 (30 received − 15 shipped = 15)
+{
+ "received": 30,
+ "sold": 15,
+ "onHand": 15
+}
+
+SMOKE COMPLETE
