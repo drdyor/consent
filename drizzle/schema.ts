@@ -220,6 +220,10 @@ export const products = mysqlTable("products", {
   registryIdentifier: varchar("registryIdentifier", { length: 160 }),
   registryStatus: mysqlEnum("registryStatus", ["unverified", "verified", "not_listed"]).default("unverified").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
+  /** WINDOW S1: seller-catalog listing state. Listing is gated by market evidence + lot expiry. */
+  sellerListingStatus: mysqlEnum("sellerListingStatus", ["not_listed", "listed", "delisted"]).default("not_listed").notNull(),
+  /** WINDOW S1: sell price is OPERATOR CONTENT. Null renders as a "Price set by operator" placeholder; the system never invents a number. */
+  sellPriceNote: varchar("sellPriceNote", { length: 160 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [index("product_category_idx").on(table.category)]);
@@ -399,6 +403,9 @@ export const supplierPurchaseOrderLines = mysqlTable("supplierPurchaseOrderLines
   quantityUnit: mysqlEnum("quantityUnit", ["units", "ml", "other"]).notNull(),
   expectedLotNumber: varchar("expectedLotNumber", { length: 128 }),
   receivedQuantity: decimal("receivedQuantity", { precision: 10, scale: 2 }),
+  /** WINDOW S1 cost provenance: what was actually paid per unit on this purchase line. */
+  unitCostBought: decimal("unitCostBought", { precision: 12, scale: 2 }),
+  costCurrency: varchar("costCurrency", { length: 3 }),
   reconciliationStatus: mysqlEnum("reconciliationStatus", ["unmatched", "matched", "mismatch"]).default("unmatched").notNull(),
   reconciliationNote: text("reconciliationNote"),
   reconciledAt: timestamp("reconciledAt"),
@@ -554,9 +561,20 @@ export const productInventoryLots = mysqlTable("productInventoryLots", {
   quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   quantityUnit: mysqlEnum("quantityUnit", ["units", "ml", "other"]).notNull(),
   purchaseOrderLineId: int("purchaseOrderLineId").references(() => supplierPurchaseOrderLines.id),
+  /** WINDOW S1 cost provenance: supplier + unit cost + expiry travel with every shop-received lot. */
+  supplierName: varchar("supplierName", { length: 200 }),
+  unitCostBought: decimal("unitCostBought", { precision: 12, scale: 2 }),
+  costCurrency: varchar("costCurrency", { length: 3 }),
+  /** WINDOW S1 stock integrity: received (quantity) − sold (soldQuantity) = on-hand, never negative. */
+  soldQuantity: decimal("soldQuantity", { precision: 10, scale: 2 }).default("0").notNull(),
+  /** WINDOW S1 seller listing: set only after the evidence + expiry gate passes (fail-closed). */
+  listedForSaleAt: timestamp("listedForSaleAt"),
+  listedByUserId: int("listedByUserId"),
+  delistedAt: timestamp("delistedAt"),
+  delistReason: varchar("delistReason", { length: 255 }),
   createdByUserId: int("createdByUserId").notNull().references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, table => [index("inventory_clinic_idx").on(table.clinicId), index("inventory_product_lot_idx").on(table.productId, table.lotNumber)]);
+}, table => [index("inventory_clinic_idx").on(table.clinicId), index("inventory_product_lot_idx").on(table.productId, table.lotNumber), index("inventory_listed_idx").on(table.clinicId, table.listedForSaleAt)]);
 
 /**
  * External clinical applications request a governed draft package here. This is not a signed
