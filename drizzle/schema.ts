@@ -641,6 +641,67 @@ export const auditEvents = mysqlTable("auditEvents", {
   index("audit_event_idx").on(table.createdAt),
 ]);
 
+export const governanceReviewers = mysqlTable("governanceReviewers", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  reviewerUserId: int("reviewerUserId").notNull().references(() => users.id),
+  reviewerRole: mysqlEnum("reviewerRole", ["clinical", "legal", "source_rights"]).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  assignedByUserId: int("assignedByUserId").notNull().references(() => users.id),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+  deactivatedAt: timestamp("deactivatedAt"),
+  deactivatedByUserId: int("deactivatedByUserId").references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("governance_reviewer_clinic_user_role_unique").on(table.clinicId, table.reviewerUserId, table.reviewerRole),
+  index("governance_reviewer_clinic_active_idx").on(table.clinicId, table.isActive),
+  index("governance_reviewer_user_active_idx").on(table.reviewerUserId, table.isActive),
+]);
+
+export const educationResources = mysqlTable("educationResources", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  resourceKey: varchar("resourceKey", { length: 120 }).notNull(),
+  revision: int("revision").default(1).notNull(),
+  publisher: varchar("publisher", { length: 200 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  canonicalUrl: text("canonicalUrl").notNull(),
+  sourceVersion: varchar("sourceVersion", { length: 160 }).notNull(),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).notNull(),
+  language: mysqlEnum("language", ["pl", "en"]).default("en").notNull(),
+  audience: mysqlEnum("audience", ["patient_information", "pre_procedure_information", "aftercare_information", "professional_reference"]).notNull(),
+  contentMode: mysqlEnum("contentMode", ["link_only"]).default("link_only").notNull(),
+  rightsBasis: mysqlEnum("rightsBasis", ["canonical_link", "open_licence", "written_permission"]).default("canonical_link").notNull(),
+  attribution: varchar("attribution", { length: 500 }),
+  reviewStatus: mysqlEnum("reviewStatus", ["under_review", "approved_reference_only", "changes_requested", "rejected", "retired"]).default("under_review").notNull(),
+  requiredReviewerRoles: json("requiredReviewerRoles").notNull(),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  retiredAt: timestamp("retiredAt"),
+  retiredByUserId: int("retiredByUserId").references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("education_resource_clinic_key_revision_unique").on(table.clinicId, table.resourceKey, table.revision),
+  index("education_resource_clinic_status_idx").on(table.clinicId, table.reviewStatus),
+  index("education_resource_jurisdiction_language_idx").on(table.clinicId, table.jurisdiction, table.language),
+]);
+
+export const educationResourceReviews = mysqlTable("educationResourceReviews", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  educationResourceId: int("educationResourceId").notNull().references(() => educationResources.id),
+  governanceReviewerId: int("governanceReviewerId").notNull().references(() => governanceReviewers.id),
+  reviewerRole: mysqlEnum("reviewerRole", ["clinical", "legal", "source_rights"]).notNull(),
+  resourceRevision: int("resourceRevision").notNull(),
+  decision: mysqlEnum("decision", ["approved", "changes_requested", "rejected"]).notNull(),
+  reviewNote: text("reviewNote").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("education_review_resource_idx").on(table.educationResourceId, table.createdAt),
+  index("education_review_clinic_reviewer_idx").on(table.clinicId, table.governanceReviewerId),
+]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Clinic = typeof clinics.$inferSelect;

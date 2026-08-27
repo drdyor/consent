@@ -181,3 +181,8 @@
 - [x] Document exclusions and staged research gates for any saliva/nitrite/IVD, oral-systemic assessment, or diagnostic-commerce proposal before it is considered for Aegis catalogue or consent use.
 - [x] Reconcile the confirmed division in which Clinic owns clinical interpretation and the guideline engine, while Aegis owns governed consent attachments, rights/version audit, operational fulfilment, provenance, and non-clinical administration.
 - [x] Define the narrow Aegis roles for implant-passport packaging/verification, referral delivery evidence, research-study operations, CPD/training administration, and separately consented communications without duplicating the clinical chart.
+- [x] Add an administrator-managed reviewer roster with assignable clinical, legal, and source-rights reviewer responsibilities and immutable change/audit events.
+- [x] Add a link-only, jurisdiction/language/version-governed education-resource registry that supports canonical NICE links and other rights-cleared external references without content ingestion or scraping.
+- [x] Build a basic high-legibility Aegis dashboard interface for reviewer management and reviewed education-resource links, with no patient-level clinical trigger or diagnosis logic.
+- [x] Add regression coverage for reviewer permission, tenant scope, immutable audit history, and link-only resource governance; verify responsive dashboard views.
+- [x] Preserve the Clinic-only boundary by excluding patient symptoms, medications, clinical triggers, diagnosis, guideline interpretation, and care-pathway decisions from the Aegis governance module.
