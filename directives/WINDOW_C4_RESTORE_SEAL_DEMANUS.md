@@ -87,6 +87,24 @@ migration is a separate operator decision). Audit gates copied from that playboo
 marker grep over source AND dist, `ghost_build` from a clean archive. Traps: a planted
 `manus` import and a planted OAUTH_SERVER_URL reference must FAIL.
 
+## Stage 4 — Integrity gaps from the profession-fit demo (reports/PROFESSION_FIT_DEMO_2026-08-27.md)
+
+Live-proven on current main; all four are integrity-class, not polish:
+1. **Expired-lot gate.** A consent was sealed and SIGNED against a lot expired 2025 with zero
+   warning. Fail-closed: expired lot blocks sealing; near-expiry warns. Trap: the demo's exact
+   case must FAIL post-fix.
+2. **Practitioner attribution.** No invite/join exists; a second professional's login silently
+   creates a new clinic, so real clinics share one login and every snapshot seals the WRONG
+   practitioner identity. Build invite/join with member roles; the sealed snapshot records the
+   authenticated individual who obtained consent.
+3. **Product-less consents.** `consent.create` hard-requires productId+lot+expiry, making
+   procedure-only consents (perio SRP, hygiene) impossible. Add a procedure-only consent type
+   with the same seal/withdraw discipline; product binding stays mandatory for device/injectable
+   types.
+4. **Jurisdiction: Malta.** MT does not exist; an honest MT source was rejected until relabelled
+   "EU" — the gate is forcing dishonest labels. Add mt/uk_gb-style jurisdiction rows; a market
+   the gate doesn't know must say "jurisdiction not yet governed", never coerce a relabel.
+
 ## Cross-repo contract (mirror of the Clinic side)
 
 Commit the byte-identical literal fixture `shared/fixtures/aegis_consent_package.v1.json`
