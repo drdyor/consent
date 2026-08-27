@@ -7,6 +7,7 @@ import { consentRouter } from "./routers/consents";
 import { marketCatalogueRouter } from "./routers/marketCatalogue";
 import { workspaceRouter } from "./routers/workspace";
 import { supplierOpsRouter } from "./routers/supplierOps";
+import { clinicIntegrationRouter } from "./routers/clinicIntegration";
 
 export const appRouter = router({
   system: systemRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   marketCatalogue: marketCatalogueRouter,
   consent: consentRouter,
   supplierOps: supplierOpsRouter,
+  clinicIntegration: clinicIntegrationRouter,
 });
 
 export type AppRouter = typeof appRouter;

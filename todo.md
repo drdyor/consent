@@ -152,3 +152,11 @@
 - [x] Support both clinic-configured quarantine scan callbacks and optional commercial malware-scanning adapter configuration without storing provider credentials in application records.
 - [x] Add delivery and scanning configuration status, retry/attempt audit, and safe fallback states that never expose an unscanned or unsafe document.
 - [ ] Execute the drdyor/consent directive queue from WINDOW_C1 in order and pause for a user decision at WINDOW_C4 before any de-Manus work.
+- [ ] Aegis API seam: Add governed-product catalogue snapshot and consent-package generation contracts that can be exercised locally with synthetic data and do not enable a live clinical service.
+- [ ] Aegis integration proof: Add an end-to-end synthetic clinic-to-Aegis contract test covering approved product/usable lot generation and rejected product/lot states.
+- [ ] Aegis portability plan: Publish exact Manus/MySQL/Forge removal steps, PostgreSQL migration order, and portable S3/MinIO storage contract before activating a production endpoint.
+- [x] Aegis API seam: Add governed-product catalogue snapshot and consent-package generation contracts that can be exercised locally with synthetic data and do not enable a live clinical service.
+- [x] Aegis integration proof: Add an end-to-end synthetic clinic-to-Aegis contract test covering approved product/usable lot generation and rejected product/lot states.
+- [x] Aegis portability plan: Publish exact Manus/MySQL/Forge removal steps, PostgreSQL migration order, and portable S3/MinIO storage contract before activating a production endpoint.
+- [x] Multi-clinic implant handover: Publish the dashboard-to-backend flow for governed consent, stock availability, address-presets, invoice requests, receiving, and safe automation, including separate Clinic and Aegis work assignments.
+- [ ] Aegis reusable skill: Package the governed product-to-consent API and portability workflow as a validated reusable skill.

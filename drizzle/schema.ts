@@ -556,6 +556,39 @@ export const productInventoryLots = mysqlTable("productInventoryLots", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("inventory_clinic_idx").on(table.clinicId), index("inventory_product_lot_idx").on(table.productId, table.lotNumber)]);
 
+/**
+ * External clinical applications request a governed draft package here. This is not a signed
+ * consent record; signing remains in the existing immutable consentRecords lifecycle.
+ */
+export const clinicConsentPackages = mysqlTable("clinicConsentPackages", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  originApp: mysqlEnum("originApp", ["dental", "aesthetics", "md"]).notNull(),
+  originTenantRef: varchar("originTenantRef", { length: 128 }).notNull(),
+  correlationId: varchar("correlationId", { length: 128 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 128 }).notNull(),
+  originCaseRef: varchar("originCaseRef", { length: 128 }).notNull(),
+  subjectRef: varchar("subjectRef", { length: 128 }).notNull(),
+  templateId: int("templateId").notNull().references(() => consentTemplates.id),
+  templateRevision: int("templateRevision").notNull(),
+  productId: int("productId").notNull().references(() => products.id),
+  inventoryLotId: int("inventoryLotId").notNull().references(() => productInventoryLots.id),
+  procedureKey: varchar("procedureKey", { length: 100 }).notNull(),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).notNull(),
+  language: mysqlEnum("language", ["en", "pl", "mt"]).notNull(),
+  treatmentSiteRefs: json("treatmentSiteRefs").notNull(),
+  disclosureChoiceIds: json("disclosureChoiceIds").notNull(),
+  productRevision: varchar("productRevision", { length: 200 }).notNull(),
+  renderedDocumentHash: varchar("renderedDocumentHash", { length: 128 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  status: mysqlEnum("status", ["draft", "sent", "signed", "voided"]).default("draft").notNull(),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("clinic_package_idempotency_unique").on(table.clinicId, table.originApp, table.idempotencyKey),
+  index("clinic_package_case_idx").on(table.clinicId, table.originApp, table.originCaseRef),
+]);
+
 export const auditEvents = mysqlTable("auditEvents", {
   id: int("id").autoincrement().primaryKey(),
   clinicId: int("clinicId").notNull().references(() => clinics.id),
