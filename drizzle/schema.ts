@@ -670,6 +670,63 @@ export type Clinic = typeof clinics.$inferSelect;
 export type ClinicMember = typeof clinicMembers.$inferSelect;
 export type PractitionerProfile = typeof practitionerProfiles.$inferSelect;
 export type ProductSource = typeof productSources.$inferSelect;
+/**
+ * WINDOW S2A — outbound sales orders: a clinic buys from the seller catalog (WINDOW S1).
+ * clinicId is the SELLER clinic (Eva); the buyer is a tenant clinic where one exists
+ * (buyerClinicId) and always a recorded name. Each product line must be allocated to a
+ * SPECIFIC stock lot before it can ship (order_lot_traceability, fail-closed).
+ */
+export const salesOrders = mysqlTable("salesOrders", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  orderNumber: varchar("orderNumber", { length: 120 }).notNull(),
+  buyerClinicId: int("buyerClinicId").references(() => clinics.id),
+  buyerName: varchar("buyerName", { length: 200 }).notNull(),
+  shippingAddress: varchar("shippingAddress", { length: 500 }).notNull(),
+  status: mysqlEnum("status", ["ordered", "confirmed", "shipped", "delivered", "cancelled"]).default("ordered").notNull(),
+  orderedAt: timestamp("orderedAt").notNull(),
+  confirmedAt: timestamp("confirmedAt"),
+  shippedAt: timestamp("shippedAt"),
+  deliveredAt: timestamp("deliveredAt"),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [uniqueIndex("sales_order_clinic_number_unique").on(table.clinicId, table.orderNumber), index("sales_order_clinic_status_idx").on(table.clinicId, table.status)]);
+
+export const salesOrderLines = mysqlTable("salesOrderLines", {
+  id: int("id").autoincrement().primaryKey(),
+  salesOrderId: int("salesOrderId").notNull().references(() => salesOrders.id),
+  productId: int("productId").notNull().references(() => products.id),
+  /** Nullable until allocated; shipping a line with no lot FAILS (order_lot_traceability). */
+  inventoryLotId: int("inventoryLotId").references(() => productInventoryLots.id),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
+  quantityUnit: mysqlEnum("quantityUnit", ["units", "ml", "other"]).notNull(),
+  /** Operator content only — the system never invents a price. NULL = "price not recorded". */
+  unitSellPrice: decimal("unitSellPrice", { precision: 12, scale: 2 }),
+  sellCurrency: varchar("sellCurrency", { length: 3 }),
+  allocatedAt: timestamp("allocatedAt"),
+  shippedAt: timestamp("shippedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("sales_order_line_order_idx").on(table.salesOrderId), index("sales_order_line_lot_idx").on(table.inventoryLotId)]);
+
+/**
+ * WINDOW S2A — immutable invoice: a sealed JSON snapshot + sha256 hash, following the
+ * signed-consent snapshot pattern. status has exactly ONE value by design: no payment or
+ * charge code path exists anywhere (no_charge gate); collection is an operator/seam decision.
+ */
+export const salesInvoices = mysqlTable("salesInvoices", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  salesOrderId: int("salesOrderId").notNull().references(() => salesOrders.id),
+  invoiceNumber: varchar("invoiceNumber", { length: 120 }).notNull(),
+  snapshot: json("snapshot").notNull(),
+  snapshotHash: varchar("snapshotHash", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["issued_not_collected"]).default("issued_not_collected").notNull(),
+  issuedAt: timestamp("issuedAt").notNull(),
+  issuedByUserId: int("issuedByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("sales_invoice_order_unique").on(table.salesOrderId), uniqueIndex("sales_invoice_clinic_number_unique").on(table.clinicId, table.invoiceNumber)]);
+
 export type Product = typeof products.$inferSelect;
 export type DisclosureBlock = typeof disclosureBlocks.$inferSelect;
 export type ConsentTemplate = typeof consentTemplates.$inferSelect;
