@@ -176,3 +176,8 @@
 - [x] Define Aegis versus Clinic ownership for patient education, clinical guidelines, referrals, implant passports, longitudinal implant follow-up, newsletters, and research-derived analytics.
 - [x] Document a safety-first future referral and education model that excludes autonomous diagnosis, imaging interpretation, risk scoring, treatment recommendation, and patient-specific generated clinical advice.
 - [x] Define the consent, provenance, commercial-neutrality, privacy, human-approval, and opt-in controls required before any future patient communication, passport-verification, or referral exchange is activated.
+- [x] Define a governed Aegis educational-resource registry that supplies only reviewed, jurisdiction/language/version-bound resource references to the Clinic application and consent packs.
+- [x] Define a publisher-rights-first guideline-monitoring model that uses official APIs or written permissions, human clinical review, and immutable source/change records rather than unlicensed content scraping or automatic rule activation.
+- [x] Document exclusions and staged research gates for any saliva/nitrite/IVD, oral-systemic assessment, or diagnostic-commerce proposal before it is considered for Aegis catalogue or consent use.
+- [x] Reconcile the confirmed division in which Clinic owns clinical interpretation and the guideline engine, while Aegis owns governed consent attachments, rights/version audit, operational fulfilment, provenance, and non-clinical administration.
+- [x] Define the narrow Aegis roles for implant-passport packaging/verification, referral delivery evidence, research-study operations, CPD/training administration, and separately consented communications without duplicating the clinical chart.

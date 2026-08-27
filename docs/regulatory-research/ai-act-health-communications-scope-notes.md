@@ -14,6 +14,8 @@
 | UK electronic marketing | The ICO provides separate PECR and direct-marketing guidance for electronic communications. [4] | Education/care communications and marketing must have separate purpose/consent/preference records; a “newsletter” cannot be assumed to be a treatment communication. |
 | NICE guideline access | NICE operates a syndication API under an organisation-specific licence. It says end-user AI use of NICE content must access content through that API and be approved/licensed; using NICE content to train, fine-tune, or weight generative AI/LLMs is not permitted. [5] | Do not build an Aegis agentic scraper for NICE content. Any future NICE integration requires a licence, approved API key held as a secret, territorial control, attribution/quality assurance, and human clinical governance. |
 | SDCEP reuse | SDCEP states that commercial use requires written permission and prohibits modification/editing or use out of context that creates a false or misleading impression. [6] | Treat SDCEP material as source discovery only until commercial reuse permission and review rules are documented. Do not auto-extract recommendations into a production rule or consent library. |
+| EU diagnostic-device context | Regulation (EU) 2017/746 is the EU in-vitro diagnostic medical-device regulation. [7] | A saliva specimen, analytical strip/cassette, and software interpretation proposal cannot be treated as ordinary shop inventory. Obtain a formal intended-purpose and classification assessment before research use, sale, claims, data collection, or consent integration. |
+| Great Britain diagnostic-device context | MHRA guidance states that IVDs are included in Great Britain’s medical-device regime and the government guidance covers sale/supply, assessment, and in-house manufacture. [8] [9] | No custom or white-labelled saliva strip, diagnostic workflow, or interpretation feature should be listed in Aegis catalogue/shop until manufacturer role, market route, evidence, labelling, registration, and post-market obligations have been reviewed for the intended market. |
 
 ## Consequent product boundary
 
@@ -34,3 +36,9 @@ An implant passport should be a deterministic, patient-controlled export of veri
 [5] [NICE, *NICE syndication API*](https://www.nice.org.uk/reusing-our-content/nice-syndication-api)
 
 [6] [SDCEP, *Copyright*](https://www.psm.sdcep.org.uk/about/copyright/)
+
+[7] [Regulation (EU) 2017/746, *In vitro diagnostic medical devices*, EUR-Lex](https://eur-lex.europa.eu/eli/reg/2017/746/oj/eng)
+
+[8] [MHRA, *In vitro diagnostic medical devices: guidance on legislation*](https://www.gov.uk/government/publications/in-vitro-diagnostic-medical-devices-guidance-on-legislation)
+
+[9] [MHRA, *Regulating medical devices in the UK*](https://www.gov.uk/guidance/regulating-medical-devices-in-the-uk)
