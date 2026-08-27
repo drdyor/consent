@@ -64,6 +64,13 @@ below are DISJOINT from that scope unless marked.
   renderedPdfUrl). If your remediation collides with any of these areas, note it and finish
   your scope — reconciliation is operator-side.
 
+- [ ] **D4 — MIGRATION NUMBER COLLISION at merge (verified on disk):** three branches each
+  minted their own `0027` — `0027_demanus_local_credentials.sql` (oss-adoption lineage),
+  `0027_shop_foundation.sql` (+`0028_shop_sales_orders.sql`, shop branch),
+  `0027_surveyjs_render_engine.sql` (surveyjs branch). Whoever merges MUST renumber
+  sequentially in merge order and re-register the journal (shop's 89f4f6d journal fix is
+  the reference). Never apply two same-numbered migrations to one DB.
+
 ## Standing rule (Eva, 2026-08-28)
 **No scoring or comparative claims without reading the code.**
 
