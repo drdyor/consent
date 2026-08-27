@@ -159,17 +159,17 @@
 - [x] Define a shared consent-engine core with separate dental/implant and aesthetic clinical modules, retaining independent jurisdiction, licensing, audit, procedure, product, material, and anatomy contexts.
 - [x] Define Aegis as the standalone Operations Hub for consent, stock, procurement, and future supply search, with dental, aesthetics, and MD clinical applications using a native consent experience backed by Aegis APIs and immutable audit records.
 - [x] Commit and push the Aegis architecture handover, then provide a verified portable sandbox package and runtime handoff that enables future development without reliance on this session.
-- [ ] Create and validate a reusable project-preservation and dynamic-runtime handover skill.
-- [ ] Implement a Malta market profile with separate authority, economic-operator, source, template, and product-evidence gates.
-- [ ] Prepare source-governed dental implant procedure templates and material-source packs for administrator/counsel approval, without treating them as legal advice or patient-ready content before review.
-- [ ] Add a simple dental module selection workflow for pre-generated procedures and actual dental materials, lots, and expiry context in the consent builder.
-- [ ] Validate Malta isolation, dental source/template gating, selected-material traceability, responsive builder flow, and document the approval boundary before committing and pushing.
-- [ ] Implement clinic-to-Aegis contracts for treatment-plan consent generation, material availability and low-stock response, and multi-clinic traceability without sending clinical diagnosis inputs to Aegis decision logic.
-- [ ] Implement approval-gated purchase-order and invoice-request workflows that never place a supplier order or payment without explicit authorised clinic confirmation and verified supplier integration configuration.
-- [ ] Assess permitted VPartFinder use for source/product discovery, retain official manufacturer or regulator evidence as the sole patient-ready basis, and document the Clinic repository integration responsibilities.
+- [x] Create and validate a reusable project-preservation and dynamic-runtime handover skill.
+- [x] Implement a Malta market profile with separate authority, economic-operator, source, template, and product-evidence gates.
+- [x] Prepare source-governed dental implant procedure templates and material-source packs for administrator/counsel approval, without treating them as legal advice or patient-ready content before review.
+- [x] Add a simple dental module selection workflow for pre-generated procedures and actual dental materials, lots, and expiry context in the consent builder.
+- [x] Validate Malta isolation, dental source/template gating, selected-material traceability, responsive builder flow, and document the approval boundary before committing and pushing.
+- [x] Implement clinic-to-Aegis contracts for treatment-plan consent generation, material availability and low-stock response, and multi-clinic traceability without sending clinical diagnosis inputs to Aegis decision logic.
+- [x] Implement approval-gated purchase-order and invoice-request workflows that never place a supplier order or payment without explicit authorised clinic confirmation and verified supplier integration configuration.
+- [x] Assess permitted VPartFinder use for source/product discovery, retain official manufacturer or regulator evidence as the sole patient-ready basis, and document the Clinic repository integration responsibilities.
 - [x] Define a provider-neutral agent boundary with immutable action logs, scoped capabilities, explicit human approval gates, and no autonomous clinical, signature, supplier-order, or payment action.
 - [x] Define standalone printable and paper-signature workflows that append a witnessed physical-signature event rather than changing a sealed consent record.
 - [x] Define the multilingual content, template, disclosure, fallback, and translator-review model for future governed language expansion.
 - [x] Define inventory-aware multi-clinic group-buy/RFQ safeguards with voluntary per-clinic commitments, direct shipping presets, no pooled payments, no automatic supplier orders, and no unnecessary-stock recommendation.
-- [ ] Reconcile Aegis models and handoff with Clinic commits `d812630` and Consent commit `48fb4d2`, including portable-runtime prerequisites, immutable address presets, supply-readiness results, receiving/outbox events, buying pools/RFQs, and commercial-neutral training-entitlement separation.
-- [ ] Preserve Clinic’s assisted-operations boundary: no clinical component choice, substitution, supplier/price claim, payment, paid-status assertion, supplier submission, or group-buy obligation without explicit authorized human action and verified supplier configuration.
+- [x] Reconcile Aegis models and handoff with Clinic commits `d812630` and Consent commit `48fb4d2`, including portable-runtime prerequisites, immutable address presets, supply-readiness results, receiving/outbox events, buying pools/RFQs, and commercial-neutral training-entitlement separation.
+- [x] Preserve Clinic’s assisted-operations boundary: no clinical component choice, substitution, supplier/price claim, payment, paid-status assertion, supplier submission, or group-buy obligation without explicit authorized human action and verified supplier configuration.
