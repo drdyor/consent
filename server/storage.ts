@@ -1,8 +1,16 @@
 // Preconfigured storage helpers for Manus WebDev templates
 // Uploads via Forge Server presigned URL to S3 (PUT direct).
 // Downloads return /manus-storage/{key} paths served via 307 redirect.
+//
+// De-Manus seam (WINDOW_C4 Stage 3): STORAGE_PROVIDER=s3 swaps the presigner
+// from Forge to a direct S3-compatible endpoint (MinIO/R2/AWS) while keeping
+// every public function signature AND the stored `/manus-storage/{key}` URL
+// shape identical, so all consumers (signature upload, supplier evidence,
+// photos) and existing DB rows work unchanged. Default remains forge.
 
 import { ENV } from "./_core/env";
+import { getStorageProvider } from "./providers/config";
+import { s3PresignGet, s3PresignPut } from "./providers/s3Storage";
 
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
@@ -33,24 +41,32 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
 
-  // 1. Get presigned PUT URL from Forge
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
+  let s3Url: string;
+  if (getStorageProvider() === "s3") {
+    // 1. Presign PUT directly against the S3-compatible endpoint.
+    s3Url = await s3PresignPut(key, contentType);
+  } else {
+    const { forgeUrl, forgeKey } = getForgeConfig();
 
-  const presignResp = await fetch(presignUrl, {
-    headers: { Authorization: `Bearer ${forgeKey}` },
-  });
+    // 1. Get presigned PUT URL from Forge
+    const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+    presignUrl.searchParams.set("path", key);
 
-  if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+    const presignResp = await fetch(presignUrl, {
+      headers: { Authorization: `Bearer ${forgeKey}` },
+    });
+
+    if (!presignResp.ok) {
+      const msg = await presignResp.text().catch(() => presignResp.statusText);
+      throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+    }
+
+    const { url } = (await presignResp.json()) as { url: string };
+    if (!url) throw new Error("Forge returned empty presign URL");
+    s3Url = url;
   }
-
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Forge returned empty presign URL");
 
   // 2. PUT file directly to S3
   const blob =
@@ -77,8 +93,11 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 }
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
   const key = normalizeKey(relKey);
+  if (getStorageProvider() === "s3") {
+    return s3PresignGet(key);
+  }
+  const { forgeUrl, forgeKey } = getForgeConfig();
 
   const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
   getUrl.searchParams.set("path", key);

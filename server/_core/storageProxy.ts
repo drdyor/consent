@@ -1,4 +1,6 @@
 import type { Express } from "express";
+import { getStorageProvider } from "../providers/config";
+import { s3PresignGet } from "../providers/s3Storage";
 import { ENV } from "./env";
 
 export function registerStorageProxy(app: Express) {
@@ -6,6 +8,19 @@ export function registerStorageProxy(app: Express) {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
       res.status(400).send("Missing storage key");
+      return;
+    }
+
+    // De-Manus seam: STORAGE_PROVIDER=s3 serves the same /manus-storage/{key}
+    // paths (kept for stored-URL compatibility) via S3 presigned GET redirect.
+    if (getStorageProvider() === "s3") {
+      try {
+        res.set("Cache-Control", "no-store");
+        res.redirect(307, await s3PresignGet(key));
+      } catch (err) {
+        console.error("[StorageProxy] s3 presign failed:", err);
+        res.status(502).send("Storage proxy error");
+      }
       return;
     }
 
