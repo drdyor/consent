@@ -193,3 +193,6 @@
 - [x] Add an explicit clinician-selected, approved link-only education-resource attachment to draft consents, rejecting unapproved, retired, wrong-jurisdiction, or wrong-language references and all patient-trigger/clinical-rule inputs.
 - [x] Seal selected approved education-resource metadata and canonical URLs into the immutable signed-consent snapshot and printable export, without copying third-party guidance text.
 - [x] Surface the selected resource references in consent review and records as non-diagnostic supplementary information, distinct from required product and procedure disclosures.
+- [x] Conduct a documented four-persona Aegis usability review covering clinician consent assembly, clinic administration/source governance, supplier operations, and clinical-app integration operations.
+- [x] Record evidence-backed working, blocked, confusing, and intentionally unavailable workflows with actionable prioritised findings.
+- [x] Create and validate a reusable skill for role-based regulated-workflow usability review, including safe evidence collection, capability classification, and preservation/handover checks.
