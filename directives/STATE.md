@@ -1,6 +1,6 @@
 # Aegis Consent + Shop — directive queue state
 
-**Current window:** ⛔ WINDOW_C4 — de-Manus migration (GATED: pause for the user’s fold-versus-standalone decision)
+**Current window:** ⛔ WINDOW_C4 — standalone Aegis portability implementation (GATED: product direction is standalone; wait for target-hosting and runtime-owner decisions before migration code or data transfer)
 **On completion:** update this file to point at the next window, then proceed.
 
 Read `HANDOVER_AEGIS_CONSENT.md` and the clinic repo's `STRATEGY.md` first. Decision
@@ -40,3 +40,4 @@ builder's; (g) each window: tests green → committed → pushed → STATE.md up
   De-Manus moved to current (existential); shop windows S0/S1/S2 added; labs split clinic+shop.
 - 2026-08-21: WINDOW_C2 completed (Manus). Added encrypted clinic-scoped patient entities, controlled legacy linkage, patient history, time-boxed one-use public signing capabilities, immutable patient-bound snapshots, migration 0022, report, and behavioral tests. Synthetic data only. WINDOW_C3 handed over.
 - 2026-08-21: WINDOW_C3 completed (Manus). Added immutable signed-consent evidence-freshness flags, administrator review queue, deterministic manual recheck, task-UID-bound daily endpoint/configuration, migrations 0023/0024, report, and behavior tests. WINDOW_C4 is now paused pending the user’s explicit de-Manus decision.
+- 2026-08-26: Working product direction recorded: Aegis remains the standalone Operations Hub for consent, stock, procurement, and a future shop/search API. Dental, aesthetics, and MD clinical products use Aegis through a native workflow and a governed consent API. Architecture and sandbox/runtime handovers are committed; no de-Manus runtime migration, data transfer, secret export, or hosting cutover has started.
