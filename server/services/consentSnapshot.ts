@@ -13,6 +13,7 @@ export function buildSignedSnapshot(input: {
   source: unknown;
   inventoryLot?: unknown;
   materials?: unknown[];
+  educationResources?: unknown[];
   practitioner: unknown;
   clinic: unknown;
   disclosures: Disclosure[];
@@ -29,6 +30,7 @@ export function buildSignedSnapshot(input: {
     source: input.source,
     inventoryLot: input.inventoryLot || null,
     materials: input.materials || [],
+    educationResources: input.educationResources || [],
     practitioner: input.practitioner,
     clinic: input.clinic,
     disclosures: input.disclosures,

@@ -702,6 +702,27 @@ export const educationResourceReviews = mysqlTable("educationResourceReviews", {
   index("education_review_clinic_reviewer_idx").on(table.clinicId, table.governanceReviewerId),
 ]);
 
+export const consentEducationResourceAttachments = mysqlTable("consentEducationResourceAttachments", {
+  id: int("id").autoincrement().primaryKey(),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  educationResourceId: int("educationResourceId").notNull().references(() => educationResources.id),
+  resourceKey: varchar("resourceKey", { length: 120 }).notNull(),
+  resourceRevision: int("resourceRevision").notNull(),
+  publisher: varchar("publisher", { length: 200 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  canonicalUrl: text("canonicalUrl").notNull(),
+  sourceVersion: varchar("sourceVersion", { length: 160 }).notNull(),
+  jurisdiction: varchar("jurisdiction", { length: 32 }).notNull(),
+  language: mysqlEnum("language", ["pl", "en"]).notNull(),
+  audience: mysqlEnum("audience", ["patient_information", "pre_procedure_information", "aftercare_information", "professional_reference"]).notNull(),
+  rightsBasis: mysqlEnum("rightsBasis", ["canonical_link", "open_licence", "written_permission"]).notNull(),
+  attachedByUserId: int("attachedByUserId").notNull().references(() => users.id),
+  attachedAt: timestamp("attachedAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("consent_resource_attachment_unique").on(table.consentRecordId, table.educationResourceId),
+  index("consent_resource_attachment_consent_idx").on(table.consentRecordId, table.attachedAt),
+]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Clinic = typeof clinics.$inferSelect;
