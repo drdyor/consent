@@ -54,11 +54,15 @@ below are DISJOINT from that scope unless marked.
   library, FDI tooth keys, medical_device category, +11 tests; PLUS de-Manus provider seams
   in progress — env-gated AUTH/STORAGE/SCHEDULER providers, Manus stays default). Merge-
   coordinate; only overlap is a display-only leftJoin in `workspace.ts` recent-records.
-- [ ] **D3 — two further operator branches exist, both based on D2's tip:**
-  `surveyjs-forms-2026-08-28` (opt-in SurveyJS render engine per template, default off,
-  snapshot pipeline untouched) and `shop-foundation-2026-08-28` (WINDOW_S1 seller catalog +
-  purchase-in + batch/expiry on the EXISTING supplier/PO/lot tables). If your remediation
-  collides with either area, note it and finish your scope — reconciliation is operator-side.
+- [ ] **D3 — four further operator branches exist, all based on D2's tip:**
+  `surveyjs-forms-2026-08-28` (opt-in SurveyJS render engine, default off, snapshot pipeline
+  untouched), `shop-foundation-2026-08-28` (WINDOW_S1 seller catalog + purchase-in +
+  batch/expiry on the EXISTING supplier/PO/lot tables), `signing-ux-2026-08-28`
+  (signature_pad, blank-signature seal bug FIXED, patient-signing-link UI + ceremony audit
+  events → closes B1/B3), and `server-pdf-passport-2026-08-28` (server-side sealed-consent
+  PDF, patient passport w/ attached JSON + QR, public non-PHI /verify route — populates
+  renderedPdfUrl). If your remediation collides with any of these areas, note it and finish
+  your scope — reconciliation is operator-side.
 
 ## Standing rule (Eva, 2026-08-28)
 **No scoring or comparative claims without reading the code.**
