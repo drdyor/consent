@@ -7,4 +7,10 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // De-Manus S3 storage seam (STORAGE_PROVIDER=s3). Works with MinIO / R2 / AWS.
+  s3Endpoint: process.env.S3_ENDPOINT ?? "",
+  s3Bucket: process.env.S3_BUCKET ?? "",
+  s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
+  s3SecretKey: process.env.S3_SECRET_KEY ?? "",
+  s3Region: process.env.S3_REGION ?? "us-east-1",
 };
