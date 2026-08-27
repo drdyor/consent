@@ -13,6 +13,7 @@ import { buildWithdrawalEventHash, notarizeSnapshotHash, verifyNotarizedSnapshot
 import { createPatientSigningToken, decryptPatientValue, encryptPatientIdentity, hashPatientSigningToken } from "../services/patientIdentity";
 import { registerScheduledJob } from "../providers/scheduler";
 import { procedureOnlySnapshotSection } from "../../shared/procedureOnlyConsent";
+import { tryGenerateSealedConsentPdf } from "../services/consentArtifacts";
 
 const consentInput = z.object({
   templateId: z.number().int().positive(), productId: z.number().int().positive().optional(), inventoryLotId: z.number().int().positive().optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), patientDateOfBirth: z.coerce.date().optional(), lotNumber: z.string().min(1).max(128).optional(), expiryDate: z.coerce.date().optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
@@ -205,7 +206,9 @@ export const consentRouter = router({
     const signedAt = new Date(); let signatureUrl: string | null = null; if (input.signingMethod === "drawn" && input.signatureImageData) { const base64 = input.signatureImageData.includes(",") ? input.signatureImageData.split(",").at(-1) || "" : input.signatureImageData; const bytes = Buffer.from(base64, "base64"); if (!bytes.byteLength || bytes.byteLength > 2 * 1024 * 1024) throw new Error("Drawn signature must be under 2 MB"); signatureUrl = (await storagePut(`consents/${active.row.record.id}/patient-signature.png`, bytes, "image/png")).url; }
     const mapEntries = active.row.product ? await db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, active.row.record.id)).orderBy(treatmentMapEntries.createdAt) : []; const signedTreatmentMap = active.row.product && active.row.record.lotNumber && active.row.record.expiryDate ? bindTreatmentMapForSigning(mapEntries, buildTreatmentMapConsentContext({ lotNumber: active.row.record.lotNumber, expiryDate: active.row.record.expiryDate }, active.row.product, active.row.practitioner)) : []; const { snapshot, snapshotHash } = buildSignedSnapshot({ record: active.row.record, template: { name: active.row.template.name, revision: active.row.template.revision, sections: active.row.template.sections }, product: active.row.product ?? procedureOnlySnapshotSection(), source: active.row.source ?? procedureOnlySnapshotSection(), inventoryLot: active.row.inventoryLot, practitioner: active.row.practitioner, clinic: active.row.clinic, patient: { id: active.patient.id, identityHash: active.patient.identityHash }, disclosures: applicable, signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, treatmentMap: signedTreatmentMap });
     await db.transaction(async tx => { if (required.length) await tx.insert(consentAcknowledgements).values(required.map(d => ({ consentRecordId: active.row.record.id, disclosureBlockId: d.id, sectionKey: `disclosure-${d.id}`, sectionTitle: d.title, acknowledgedAt: signedAt }))); await tx.update(patientSigningLinks).set({ usedAt: signedAt }).where(and(eq(patientSigningLinks.id, active.link.id), isNull(patientSigningLinks.usedAt))); await tx.update(consentRecords).set({ status: "signed", signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, signedSnapshot: snapshot, snapshotHash }).where(and(eq(consentRecords.id, active.row.record.id), eq(consentRecords.status, "sent"))); await tx.insert(auditEvents).values({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, action: "consent.patient_signed", entityType: "consentRecord", entityId: String(active.row.record.id), summary: "Consent signed through a single-use patient-held capability" }); });
-    const notary = await attemptConsentNotarization({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, actorUserId: active.row.record.practitionerUserId, signedSnapshot: snapshot, snapshotHash }); return { success: true, signedAt, snapshotHash, notaryStatus: notary.status };
+    const notary = await attemptConsentNotarization({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, actorUserId: active.row.record.practitionerUserId, signedSnapshot: snapshot, snapshotHash });
+    const renderedPdfUrl = await tryGenerateSealedConsentPdf(active.row.record.id, active.row.record.clinicId);
+    return { success: true, signedAt, snapshotHash, notaryStatus: notary.status, renderedPdfUrl };
   }),
   create: protectedProcedure.input(consentInput).mutation(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user);
@@ -283,7 +286,9 @@ export const consentRouter = router({
       await tx.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, action: "consent.signed", entityType: "consentRecord", entityId: String(row.record.id), summary: `Consent signed by ${input.signerName}` });
     });
     const notary = await attemptConsentNotarization({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, signedSnapshot: snapshot, snapshotHash });
-    return { success: true, signedAt, snapshotHash, notaryStatus: notary.status };
+    // Best-effort server-side sealed PDF (never fails the completed signing).
+    const renderedPdfUrl = await tryGenerateSealedConsentPdf(row.record.id, workspace.clinic.id);
+    return { success: true, signedAt, snapshotHash, notaryStatus: notary.status, renderedPdfUrl };
   }),
 });
 

@@ -22,6 +22,7 @@ import { runEvidenceFreshnessRecheck } from "../routers/consents";
 import { recordSupplierDocumentScanVerdict, runCommercialDocumentScanFollowup, runEvidenceExpiryScan, runOverdueIncidentDeliveryScan } from "../routers/supplierOps";
 import { storageGetSignedUrl } from "../storage";
 import { canReleaseSupplierDocument } from "../services/supplierEscalation";
+import { registerConsentArtifactRoutes } from "../routes/consentArtifactRoutes";
 
 // De-Manus scheduler seam: an EXTERNAL cron may authenticate to the
 // /api/scheduled/* endpoints with `Authorization: Bearer ${SCHEDULED_JOBS_SECRET}`
@@ -69,6 +70,8 @@ async function startServer() {
   // De-Manus auth seam: /api/auth/provider always; login/register only when
   // AUTH_PROVIDER=local. Manus OAuth routes above stay the default.
   registerLocalAuthRoutes(app);
+  // Server-side sealed-consent PDF + passport + public /verify/:snapshotHash
+  registerConsentArtifactRoutes(app);
   app.get("/api/supplier-evidence/:documentId/download", async (req, res) => {
     try {
       const user = await sdk.authenticateRequest(req);
