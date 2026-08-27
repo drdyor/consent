@@ -24,6 +24,21 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+/**
+ * De-Manus auth seam (AUTH_PROVIDER=local): email+password credentials for a
+ * user. The user keeps a stable synthetic `users.openId` (`local:<uuid>`) so
+ * everything downstream of openId is untouched. Absent/empty when the Manus
+ * OAuth provider (default) is in use. Migration: 0027 (hand-written).
+ */
+export const localCredentials = mysqlTable("localCredentials", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 512 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const clinics = mysqlTable("clinics", {
   id: int("id").autoincrement().primaryKey(),
   ownerUserId: int("ownerUserId").notNull().references(() => users.id),
