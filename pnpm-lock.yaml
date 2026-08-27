@@ -199,6 +199,12 @@ importers:
       superjson:
         specifier: ^1.13.3
         version: 1.13.3
+      survey-core:
+        specifier: ^3.0.2
+        version: 3.0.2
+      survey-react-ui:
+        specifier: ^3.0.2
+        version: 3.0.2(react-dom@19.2.1(react@19.2.1))(react@19.2.1)(survey-core@3.0.2)
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.3.1
@@ -4913,6 +4919,16 @@ packages:
   supports-color@8.1.1:
     resolution: {integrity: sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==}
     engines: {node: '>=10'}
+
+  survey-core@3.0.2:
+    resolution: {integrity: sha512-koM/Y8tV5YBaRxoET4kzHcnHWH0x//xSUtyahCS7WkBM9KaNrerh7reAXss7qVdInLZ4pkRTE76GiOWTuSaD5Q==}
+
+  survey-react-ui@3.0.2:
+    resolution: {integrity: sha512-r6pZfmxDJKAYHFw2Ng/Ppt9b/FdmgIO3Kd5bssFW9zES+JczkUbRM3jv9USf5VRAOm4lY0CV1WPwIZs/S3FX7Q==}
+    peerDependencies:
+      react: ^16.5.0 || ^17.0.1 || ^18.1.0 || ^19.0.0
+      react-dom: ^16.5.0 || ^17.0.1 || ^18.1.0 || ^19.0.0
+      survey-core: 3.0.2
 
   svg-pathdata@6.0.3:
     resolution: {integrity: sha512-qsjeeq5YjBZ5eMdFuUa4ZosMLxgr5RZ+F+Y1OrDhuOCEInRMA3x74XdBtggJcj9kOeInz0WE+LgCPDkZFlBYJw==}
@@ -10917,6 +10933,14 @@ snapshots:
   supports-color@8.1.1:
     dependencies:
       has-flag: 4.0.0
+
+  survey-core@3.0.2: {}
+
+  survey-react-ui@3.0.2(react-dom@19.2.1(react@19.2.1))(react@19.2.1)(survey-core@3.0.2):
+    dependencies:
+      react: 19.2.1
+      react-dom: 19.2.1(react@19.2.1)
+      survey-core: 3.0.2
 
   svg-pathdata@6.0.3:
     optional: true

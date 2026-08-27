@@ -256,6 +256,12 @@ export const consentTemplates = mysqlTable("consentTemplates", {
   libraryKey: varchar("libraryKey", { length: 100 }),
   jurisdiction: varchar("jurisdiction", { length: 32 }).default("PL").notNull(),
   language: mysqlEnum("language", ["pl", "en"]).default("pl").notNull(),
+  /**
+   * Presentation engine only. 'sections' is the classic renderer; 'surveyjs' renders the SAME
+   * stored sections through survey-core/survey-react-ui (MIT) at view time. The survey model is
+   * DERIVED from `sections` on render — never stored — so the sealed snapshot is unaffected.
+   */
+  renderEngine: mysqlEnum("renderEngine", ["sections", "surveyjs"]).default("sections").notNull(),
   sections: json("sections").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
