@@ -14,6 +14,31 @@ import { createPatientSigningToken, decryptPatientValue, encryptPatientIdentity,
 import { registerScheduledJob } from "../providers/scheduler";
 import { procedureOnlySnapshotSection } from "../../shared/procedureOnlyConsent";
 
+/** Best-effort request origin for ceremony audit events (documenso-style, own code). */
+function requestOrigin(req: { headers?: Record<string, unknown>; ip?: string; socket?: { remoteAddress?: string } } | undefined) {
+  const forwarded = req?.headers?.["x-forwarded-for"];
+  const ip = (typeof forwarded === "string" ? forwarded.split(",")[0]?.trim() : undefined) || req?.ip || req?.socket?.remoteAddress || "unknown";
+  const userAgentHeader = req?.headers?.["user-agent"];
+  const userAgent = typeof userAgentHeader === "string" && userAgentHeader.length ? userAgentHeader.slice(0, 300) : "unknown";
+  return { ip, userAgent };
+}
+
+/** Parse drawn-signature stroke JSON (signature_pad toData()) or reject it loudly. */
+function parseSignatureStrokeJson(raw: string): string {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("Signature stroke data must be valid JSON"); }
+  if (!Array.isArray(parsed)) throw new Error("Signature stroke data must be a JSON array of stroke groups");
+  return JSON.stringify(parsed);
+}
+
+/** Store the supplementary stroke trace next to the sealed PNG and pin its URL in the audit trail (no schema change). */
+async function archiveSignatureStrokes(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, input: { clinicId: number; consentRecordId: number; actorUserId?: number | null; strokeJson: string; fileName: string }) {
+  const canonical = parseSignatureStrokeJson(input.strokeJson);
+  const stored = await storagePut(`consents/${input.consentRecordId}/${input.fileName}`, canonical, "application/json");
+  await db.insert(auditEvents).values({ clinicId: input.clinicId, consentRecordId: input.consentRecordId, actorUserId: input.actorUserId ?? null, action: "consent.signature_strokes_archived", entityType: "consentRecord", entityId: String(input.consentRecordId), summary: `Drawn-signature stroke trace archived as supplementary evidence at ${stored.url}` });
+  return stored;
+}
+
 const consentInput = z.object({
   templateId: z.number().int().positive(), productId: z.number().int().positive().optional(), inventoryLotId: z.number().int().positive().optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), patientDateOfBirth: z.coerce.date().optional(), lotNumber: z.string().min(1).max(128).optional(), expiryDate: z.coerce.date().optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
 });
@@ -197,14 +222,38 @@ export const consentRouter = router({
     const created = await db.insert(patientSigningLinks).values({ clinicId: workspace.clinic.id, consentRecordId: record.id, patientId: record.patientId, tokenHash: hashPatientSigningToken(token), expiresAt, createdByUserId: ctx.user.id }).$returningId(); const id = created[0]?.id;
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: record.id, actorUserId: ctx.user.id, action: "consent.patient_signing_link_issued", entityType: "patientSigningLink", entityId: String(id), summary: `Single-use patient signing link issued until ${expiresAt.toISOString()}` }); return { id, token, expiresAt, path: `/patient-sign/${token}` };
   }),
-  patientSigningLink: publicProcedure.input(z.object({ token: z.string().min(32).max(256) })).query(async ({ input }) => {
-    const active = await getActivePatientSigningLink(input.token); return { record: active.row.record, template: active.row.template, product: active.row.product, source: active.row.source, clinic: active.row.clinic, practitioner: active.row.practitioner, inventoryLot: active.row.inventoryLot, patient: { id: active.patient.id, identityHash: active.patient.identityHash }, disclosures: active.disclosures.filter(d => d.scope === "product" || d.treatmentAreaKey === active.row.record.treatmentAreaKey), expiresAt: active.link.expiresAt };
+  activePatientSigningLink: protectedProcedure.input(z.object({ recordId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const workspace = await requireWorkspace(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const record = (await db.select({ id: consentRecords.id }).from(consentRecords).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1))[0];
+    if (!record) throw new Error("Consent record not found");
+    const link = (await db.select({ id: patientSigningLinks.id, expiresAt: patientSigningLinks.expiresAt, createdAt: patientSigningLinks.createdAt }).from(patientSigningLinks).where(and(eq(patientSigningLinks.consentRecordId, input.recordId), eq(patientSigningLinks.clinicId, workspace.clinic.id), isNull(patientSigningLinks.usedAt), gte(patientSigningLinks.expiresAt, new Date()))).orderBy(desc(patientSigningLinks.expiresAt)).limit(1))[0];
+    return link || null;
   }),
-  patientSign: publicProcedure.input(z.object({ token: z.string().min(32).max(256), signerName: z.string().min(2).max(255), signingMethod: z.enum(["typed", "drawn"]), signatureImageData: z.string().max(7_000_000).optional(), acknowledgedDisclosureIds: z.array(z.number().int().positive()) })).mutation(async ({ input }) => {
+  patientSigningLink: publicProcedure.input(z.object({ token: z.string().min(32).max(256) })).query(async ({ ctx, input }) => {
+    const active = await getActivePatientSigningLink(input.token); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const origin = requestOrigin(ctx.req);
+    await db.insert(auditEvents).values({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, action: "consent.patient_link_opened", entityType: "patientSigningLink", entityId: String(active.link.id), summary: `Patient signing link opened from ip ${origin.ip} · user-agent ${origin.userAgent}` });
+    return { record: active.row.record, template: active.row.template, product: active.row.product, source: active.row.source, clinic: active.row.clinic, practitioner: active.row.practitioner, inventoryLot: active.row.inventoryLot, patient: { id: active.patient.id, identityHash: active.patient.identityHash }, disclosures: active.disclosures.filter(d => d.scope === "product" || d.treatmentAreaKey === active.row.record.treatmentAreaKey), expiresAt: active.link.expiresAt };
+  }),
+  patientSigningLinkViewed: publicProcedure.input(z.object({ token: z.string().min(32).max(256) })).mutation(async ({ ctx, input }) => {
+    const active = await getActivePatientSigningLink(input.token); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const origin = requestOrigin(ctx.req);
+    await db.insert(auditEvents).values({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, action: "consent.patient_viewed", entityType: "patientSigningLink", entityId: String(active.link.id), summary: `Consent disclosures viewed by the patient from ip ${origin.ip} · user-agent ${origin.userAgent}` });
+    return { success: true };
+  }),
+  patientRejectSigning: publicProcedure.input(z.object({ token: z.string().min(32).max(256), reason: z.string().max(2000).optional() })).mutation(async ({ ctx, input }) => {
+    const active = await getActivePatientSigningLink(input.token); const db = await getDb(); if (!db) throw new Error("Database unavailable");
+    const origin = requestOrigin(ctx.req); const rejectedAt = new Date(); const reason = input.reason?.trim();
+    await db.update(patientSigningLinks).set({ usedAt: rejectedAt }).where(and(eq(patientSigningLinks.id, active.link.id), isNull(patientSigningLinks.usedAt)));
+    await db.insert(auditEvents).values({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, action: "consent.patient_signing_rejected", entityType: "patientSigningLink", entityId: String(active.link.id), summary: `Patient declined to sign${reason ? `: ${reason}` : " (no reason given)"} · ip ${origin.ip} · user-agent ${origin.userAgent}` });
+    return { success: true, rejectedAt };
+  }),
+  patientSign: publicProcedure.input(z.object({ token: z.string().min(32).max(256), signerName: z.string().min(2).max(255), signingMethod: z.enum(["typed", "drawn"]), signatureImageData: z.string().max(7_000_000).optional(), signatureStrokeData: z.string().max(2_000_000).optional(), acknowledgedDisclosureIds: z.array(z.number().int().positive()) })).mutation(async ({ input }) => {
     const active = await getActivePatientSigningLink(input.token); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const applicable = active.disclosures.filter(d => d.scope === "product" || d.treatmentAreaKey === active.row.record.treatmentAreaKey); const required = applicable.filter(d => d.requiredAcknowledgement); if (!hasAllRequiredAcknowledgements(required, input.acknowledgedDisclosureIds)) throw new Error("Every required disclosure must be acknowledged before patient signing");
-    const signedAt = new Date(); let signatureUrl: string | null = null; if (input.signingMethod === "drawn" && input.signatureImageData) { const base64 = input.signatureImageData.includes(",") ? input.signatureImageData.split(",").at(-1) || "" : input.signatureImageData; const bytes = Buffer.from(base64, "base64"); if (!bytes.byteLength || bytes.byteLength > 2 * 1024 * 1024) throw new Error("Drawn signature must be under 2 MB"); signatureUrl = (await storagePut(`consents/${active.row.record.id}/patient-signature.png`, bytes, "image/png")).url; }
+    const signedAt = new Date(); let signatureUrl: string | null = null; if (input.signingMethod === "drawn" && input.signatureStrokeData) parseSignatureStrokeJson(input.signatureStrokeData); if (input.signingMethod === "drawn" && input.signatureImageData) { const base64 = input.signatureImageData.includes(",") ? input.signatureImageData.split(",").at(-1) || "" : input.signatureImageData; const bytes = Buffer.from(base64, "base64"); if (!bytes.byteLength || bytes.byteLength > 2 * 1024 * 1024) throw new Error("Drawn signature must be under 2 MB"); signatureUrl = (await storagePut(`consents/${active.row.record.id}/patient-signature.png`, bytes, "image/png")).url; }
     const mapEntries = active.row.product ? await db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, active.row.record.id)).orderBy(treatmentMapEntries.createdAt) : []; const signedTreatmentMap = active.row.product && active.row.record.lotNumber && active.row.record.expiryDate ? bindTreatmentMapForSigning(mapEntries, buildTreatmentMapConsentContext({ lotNumber: active.row.record.lotNumber, expiryDate: active.row.record.expiryDate }, active.row.product, active.row.practitioner)) : []; const { snapshot, snapshotHash } = buildSignedSnapshot({ record: active.row.record, template: { name: active.row.template.name, revision: active.row.template.revision, sections: active.row.template.sections }, product: active.row.product ?? procedureOnlySnapshotSection(), source: active.row.source ?? procedureOnlySnapshotSection(), inventoryLot: active.row.inventoryLot, practitioner: active.row.practitioner, clinic: active.row.clinic, patient: { id: active.patient.id, identityHash: active.patient.identityHash }, disclosures: applicable, signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, treatmentMap: signedTreatmentMap });
     await db.transaction(async tx => { if (required.length) await tx.insert(consentAcknowledgements).values(required.map(d => ({ consentRecordId: active.row.record.id, disclosureBlockId: d.id, sectionKey: `disclosure-${d.id}`, sectionTitle: d.title, acknowledgedAt: signedAt }))); await tx.update(patientSigningLinks).set({ usedAt: signedAt }).where(and(eq(patientSigningLinks.id, active.link.id), isNull(patientSigningLinks.usedAt))); await tx.update(consentRecords).set({ status: "signed", signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, signedSnapshot: snapshot, snapshotHash }).where(and(eq(consentRecords.id, active.row.record.id), eq(consentRecords.status, "sent"))); await tx.insert(auditEvents).values({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, action: "consent.patient_signed", entityType: "consentRecord", entityId: String(active.row.record.id), summary: "Consent signed through a single-use patient-held capability" }); });
+    if (input.signingMethod === "drawn" && input.signatureStrokeData) await archiveSignatureStrokes(db, { clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, actorUserId: null, strokeJson: input.signatureStrokeData, fileName: "patient-signature-strokes.json" });
     const notary = await attemptConsentNotarization({ clinicId: active.row.record.clinicId, consentRecordId: active.row.record.id, actorUserId: active.row.record.practitionerUserId, signedSnapshot: snapshot, snapshotHash }); return { success: true, signedAt, snapshotHash, notaryStatus: notary.status };
   }),
   create: protectedProcedure.input(consentInput).mutation(async ({ ctx, input }) => {
@@ -254,7 +303,7 @@ export const consentRouter = router({
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: input.recordId, actorUserId: ctx.user.id, action: "consent.sent", entityType: "consentRecord", entityId: String(input.recordId), summary: "Consent marked ready for patient signature" });
     return { success: true };
   }),
-  sign: protectedProcedure.input(z.object({ recordId: z.number().int().positive(), signerName: z.string().min(2).max(255), signingMethod: z.enum(["typed", "drawn"]), signatureImageData: z.string().max(7_000_000).optional(), acknowledgedDisclosureIds: z.array(z.number().int().positive()) })).mutation(async ({ ctx, input }) => {
+  sign: protectedProcedure.input(z.object({ recordId: z.number().int().positive(), signerName: z.string().min(2).max(255), signingMethod: z.enum(["typed", "drawn"]), signatureImageData: z.string().max(7_000_000).optional(), signatureStrokeData: z.string().max(2_000_000).optional(), acknowledgedDisclosureIds: z.array(z.number().int().positive()) })).mutation(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
@@ -267,6 +316,7 @@ export const consentRouter = router({
     if (!hasAllRequiredAcknowledgements(required, input.acknowledgedDisclosureIds)) throw new Error("Every required product and treatment-area disclosure must be acknowledged before signing");
     const signedAt = new Date();
     let signatureUrl: string | null = null;
+    if (input.signingMethod === "drawn" && input.signatureStrokeData) parseSignatureStrokeJson(input.signatureStrokeData);
     if (input.signingMethod === "drawn" && input.signatureImageData) {
       const base64 = input.signatureImageData.includes(",") ? input.signatureImageData.split(",").at(-1) || "" : input.signatureImageData;
       const bytes = Buffer.from(base64, "base64");
@@ -282,6 +332,7 @@ export const consentRouter = router({
       await tx.update(consentRecords).set({ status: "signed", signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, signedSnapshot: snapshot, snapshotHash }).where(and(eq(consentRecords.id, row.record.id), eq(consentRecords.status, "sent")));
       await tx.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, action: "consent.signed", entityType: "consentRecord", entityId: String(row.record.id), summary: `Consent signed by ${input.signerName}` });
     });
+    if (input.signingMethod === "drawn" && input.signatureStrokeData) await archiveSignatureStrokes(db, { clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, strokeJson: input.signatureStrokeData, fileName: "signature-strokes.json" });
     const notary = await attemptConsentNotarization({ clinicId: workspace.clinic.id, consentRecordId: row.record.id, actorUserId: ctx.user.id, signedSnapshot: snapshot, snapshotHash });
     return { success: true, signedAt, snapshotHash, notaryStatus: notary.status };
   }),
