@@ -62,3 +62,6 @@ below are DISJOINT from that scope unless marked.
 
 ## Standing rule (Eva, 2026-08-28)
 **No scoring or comparative claims without reading the code.**
+
+- [ ] **E6 — PDF Polish diacritics**: server PDFs transliterate PL characters; add Unicode font via @pdf-lib/fontkit (small follow-up; PL is a primary label language). From server-pdf-passport branch NOT-DONE list.
+- [ ] **E7 — RFC3161 TSA second anchor + @libpdf/core upgrade** once its LICENSE file resolves (see OSS_HELPS_SCAN).
