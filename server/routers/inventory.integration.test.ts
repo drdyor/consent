@@ -26,14 +26,14 @@ describe("consent inventory lots", () => {
 
   it("retains the selected clinic lot reference and its authoritative batch values when creating a consent", async () => {
     const selectedLot = { id: 19, clinicId: 4, productId: 7, lotNumber: "LOT-124", expiryDate: new Date("2027-12-31T00:00:00.000Z") };
-    const productRow = { product: { id: 7, sourceId: 8, registryStatus: "verified" }, source: { id: 8, reviewStatus: "approved", jurisdiction: "PL", language: "pl" } };
+    const productRow = { product: { id: 7, sourceId: 8, registryStatus: "verified", isActive: true, category: "neuromodulator" }, source: { id: 8, reviewStatus: "approved", jurisdiction: "PL", language: "pl" } };
     let selectCall = 0; let consentValues: any;
     const consentInsert = { values: vi.fn((values: any) => { consentValues = values; return { $returningId: async () => [{ id: 31 }] }; }) };
     const auditInsert = { values: vi.fn(async () => undefined) };
     state.db = {
       select: vi.fn(() => {
         selectCall += 1;
-        const rows = selectCall === 1 ? [productRow] : selectCall === 2 ? [selectedLot] : [{ id: 5, revision: 2, jurisdiction: "PL", language: "pl" }];
+        const rows = selectCall === 1 ? [productRow] : selectCall === 2 ? [selectedLot] : [{ id: 5, revision: 2, jurisdiction: "PL", language: "pl", clinicalModule: "aesthetic" }];
         const query: any = { from: () => query, innerJoin: () => query, where: () => query, limit: async () => rows };
         return query;
       }),

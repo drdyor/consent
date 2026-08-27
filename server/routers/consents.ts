@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, like, lte } from "drizzle-orm";
 import { z } from "zod";
-import { auditEvents, clinics, consentAcknowledgements, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
+import { auditEvents, clinics, consentAcknowledgements, consentMaterialSelections, consentPhotos, consentRecords, consentTemplates, disclosureBlocks, marketCatalogueProducts, practitionerProfiles, productInventoryLots, products, productSources, treatmentCourseEntries, treatmentMapEntries, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { storagePut } from "../storage";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -10,8 +10,9 @@ import { bindTreatmentMapForSigning } from "../services/treatmentMapSnapshot";
 import { buildTreatmentMapConsentContext } from "../../shared/treatmentMapContext";
 import { getMarketEvidenceGate } from "../services/marketCompliance";
 
+const materialSelectionInput = z.object({ productId: z.number().int().positive(), inventoryLotId: z.number().int().positive().optional(), selectionRole: z.enum(["primary", "supplementary"]).default("supplementary"), referenceCode: z.string().max(160).optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date() });
 const consentInput = z.object({
-  templateId: z.number().int().positive(), productId: z.number().int().positive(), inventoryLotId: z.number().int().positive().optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
+  templateId: z.number().int().positive(), productId: z.number().int().positive(), inventoryLotId: z.number().int().positive().optional(), clinicalModule: z.enum(["aesthetic", "dental", "medical"]).default("aesthetic"), materialSelections: z.array(materialSelectionInput).min(1).max(8).optional(), treatmentAreaKey: z.string().min(2).max(64), procedureName: z.string().min(2).max(160), patientFirstName: z.string().min(1).max(120), patientLastName: z.string().min(1).max(120), patientEmail: z.string().email().optional(), lotNumber: z.string().min(1).max(128), expiryDate: z.coerce.date(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"),
 });
 
 export const consentRouter = router({
@@ -98,10 +99,11 @@ export const consentRouter = router({
     const detail = await db.select({ record: consentRecords, template: consentTemplates, product: products, source: productSources, practitioner: practitionerProfiles, clinic: clinics, inventoryLot: productInventoryLots }).from(consentRecords).innerJoin(consentTemplates, eq(consentRecords.templateId, consentTemplates.id)).innerJoin(products, eq(consentRecords.productId, products.id)).innerJoin(productSources, eq(consentRecords.sourceId, productSources.id)).innerJoin(clinics, eq(consentRecords.clinicId, clinics.id)).leftJoin(practitionerProfiles, and(eq(practitionerProfiles.userId, consentRecords.practitionerUserId), eq(practitionerProfiles.clinicId, consentRecords.clinicId))).leftJoin(productInventoryLots, eq(consentRecords.inventoryLotId, productInventoryLots.id)).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1);
     const row = detail[0];
     if (!row) throw new Error("Consent record not found");
-    const disclosures = await db.select().from(disclosureBlocks).where(and(eq(disclosureBlocks.productId, row.product.id), eq(disclosureBlocks.sourceId, row.source.id), eq(disclosureBlocks.language, row.record.language)));
     const mapEntries = await db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, input.recordId)).orderBy(treatmentMapEntries.createdAt);
-    const [photos, courseEntries] = await Promise.all([db.select().from(consentPhotos).where(eq(consentPhotos.consentRecordId, input.recordId)).orderBy(desc(consentPhotos.capturedAt)), db.select().from(treatmentCourseEntries).where(eq(treatmentCourseEntries.consentRecordId, input.recordId)).orderBy(desc(treatmentCourseEntries.sessionAt))]);
-    return { ...row, disclosures: disclosures.filter(d => d.scope === "product" || d.treatmentAreaKey === row.record.treatmentAreaKey), mapEntries, photos, courseEntries };
+    const [photos, courseEntries, materialSelections] = await Promise.all([db.select().from(consentPhotos).where(eq(consentPhotos.consentRecordId, input.recordId)).orderBy(desc(consentPhotos.capturedAt)), db.select().from(treatmentCourseEntries).where(eq(treatmentCourseEntries.consentRecordId, input.recordId)).orderBy(desc(treatmentCourseEntries.sessionAt)), db.select({ selection: consentMaterialSelections, product: products, source: productSources }).from(consentMaterialSelections).innerJoin(products, eq(consentMaterialSelections.productId, products.id)).innerJoin(productSources, eq(consentMaterialSelections.sourceId, productSources.id)).where(eq(consentMaterialSelections.consentRecordId, input.recordId)).orderBy(consentMaterialSelections.id)]);
+    const materialIdentities = materialSelections.length ? materialSelections.map(item => ({ productId: item.product.id, sourceId: item.source.id })) : [{ productId: row.product.id, sourceId: row.source.id }];
+    const disclosureGroups = await Promise.all(materialIdentities.map(material => db.select().from(disclosureBlocks).where(and(eq(disclosureBlocks.productId, material.productId), eq(disclosureBlocks.sourceId, material.sourceId), eq(disclosureBlocks.language, row.record.language)))));
+    return { ...row, disclosures: disclosureGroups.flat().filter(d => d.scope === "product" || d.treatmentAreaKey === row.record.treatmentAreaKey), mapEntries, photos, courseEntries, materialSelections };
   }),
   list: protectedProcedure.input(z.object({ search: z.string().max(120).optional(), status: z.enum(["draft", "sent", "signed", "voided"]).optional(), procedure: z.string().max(160).optional(), product: z.string().max(160).optional(), practitioner: z.string().max(160).optional(), dateFrom: z.coerce.date().optional(), dateTo: z.coerce.date().optional() }).optional()).query(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user);
@@ -150,11 +152,32 @@ export const consentRouter = router({
     const template = await db.select().from(consentTemplates).where(eq(consentTemplates.id, input.templateId)).limit(1);
     if (!template[0]) throw new Error("Consent template not found");
     if (template[0].jurisdiction !== input.jurisdiction || template[0].language !== input.language) throw new Error("The selected template is not governed for this consent jurisdiction and language");
+    if (template[0].clinicalModule !== input.clinicalModule) throw new Error("The selected template is not governed for this clinical module");
     if (input.jurisdiction !== (workspace.clinic.jurisdiction || "PL")) throw new Error("The selected consent jurisdiction does not match this clinic's compliance market profile");
-    const created = await db.insert(consentRecords).values({ ...input, lotNumber: inventoryLot?.lotNumber || input.lotNumber, expiryDate: inventoryLot?.expiryDate || input.expiryDate, patientEmail: input.patientEmail || null, clinicId: workspace.clinic.id, templateRevision: template[0].revision, practitionerUserId: ctx.user.id, sourceId: product.source.id, status: "draft" }).$returningId();
+    const requestedMaterials = input.materialSelections?.length ? input.materialSelections : [{ productId: input.productId, inventoryLotId: input.inventoryLotId, selectionRole: "primary" as const, lotNumber: input.lotNumber, expiryDate: input.expiryDate }];
+    if (new Set(requestedMaterials.map(material => material.productId)).size !== requestedMaterials.length) throw new Error("Each material may be selected only once on a consent");
+    if (!requestedMaterials.some(material => material.productId === input.productId && material.selectionRole === "primary")) throw new Error("The consent's primary product must be marked as the primary material");
+    const resolvedMaterials: Array<{ productId: number; sourceId: number; inventoryLotId: number | null; selectionRole: "primary" | "supplementary"; materialLabel: string; manufacturer: string; referenceCode: string | null; lotNumber: string; expiryDate: Date }> = [];
+    for (const material of requestedMaterials) {
+      const materialProduct = material.productId === input.productId ? product : (await db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id)).where(eq(products.id, material.productId)).limit(1))[0];
+      if (!materialProduct || materialProduct.source.reviewStatus !== "approved" || !materialProduct.product.isActive) throw new Error("Every selected material requires an active clinic-approved source before it can be included in a consent");
+      if (input.clinicalModule === "dental" && !materialProduct.product.category.startsWith("dental_")) throw new Error("Dental consents may include only governed dental material records");
+      if (input.clinicalModule !== "dental" && materialProduct.product.category.startsWith("dental_")) throw new Error("Dental material records require a dental consent template");
+      if (materialProduct.source.language !== input.language) throw new Error("Every selected material source must be governed for this consent language");
+      const materialCatalogue = materialProduct.source.marketCatalogueProductId ? (await db.select().from(marketCatalogueProducts).where(eq(marketCatalogueProducts.id, materialProduct.source.marketCatalogueProductId)).limit(1))[0] : null;
+      const materialSourceForMarketGate = { ...materialProduct.source, registryIdentifier: materialProduct.source.registryIdentifier || materialProduct.product.registryIdentifier || (materialProduct.product.registryStatus === "verified" ? "legacy-verified" : null), registryVerifiedAt: materialProduct.source.registryVerifiedAt || (materialProduct.product.registryStatus === "verified" ? new Date() : null) };
+      const materialMarketGate = getMarketEvidenceGate(workspace.clinic, materialSourceForMarketGate, materialCatalogue);
+      if (!materialMarketGate.eligible) throw new Error(materialMarketGate.message);
+      const materialLot = material.inventoryLotId ? (await db.select().from(productInventoryLots).where(and(eq(productInventoryLots.id, material.inventoryLotId), eq(productInventoryLots.clinicId, workspace.clinic.id), eq(productInventoryLots.productId, material.productId))).limit(1))[0] : null;
+      if (material.inventoryLotId && !materialLot) throw new Error("A selected material inventory lot is not available for this clinic product");
+      resolvedMaterials.push({ productId: material.productId, sourceId: materialProduct.source.id, inventoryLotId: materialLot?.id || null, selectionRole: material.selectionRole, materialLabel: materialProduct.product.name, manufacturer: materialProduct.product.manufacturer, referenceCode: material.referenceCode || materialProduct.product.registryIdentifier || null, lotNumber: materialLot?.lotNumber || material.lotNumber, expiryDate: materialLot?.expiryDate || material.expiryDate });
+    }
+    const { materialSelections: _materials, clinicalModule, ...recordInput } = input;
+    const created = await db.insert(consentRecords).values({ ...recordInput, clinicalModule, lotNumber: inventoryLot?.lotNumber || input.lotNumber, expiryDate: inventoryLot?.expiryDate || input.expiryDate, patientEmail: input.patientEmail || null, clinicId: workspace.clinic.id, templateRevision: template[0].revision, practitionerUserId: ctx.user.id, sourceId: product.source.id, status: "draft" }).$returningId();
     const id = created[0]?.id;
     if (!id) throw new Error("Unable to create consent");
-    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: id, actorUserId: ctx.user.id, action: "consent.created", entityType: "consentRecord", entityId: String(id), summary: "Consent draft created" });
+    await db.insert(consentMaterialSelections).values(resolvedMaterials.map(material => ({ ...material, consentRecordId: id })));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, consentRecordId: id, actorUserId: ctx.user.id, action: "consent.created", entityType: "consentRecord", entityId: String(id), summary: `${clinicalModule} consent draft created with ${resolvedMaterials.length} governed material selection${resolvedMaterials.length === 1 ? "" : "s"}` });
     return { id };
   }),
   send: protectedProcedure.input(z.object({ recordId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -172,8 +195,10 @@ export const consentRouter = router({
     const rows = await db.select({ record: consentRecords, template: consentTemplates, product: products, source: productSources, practitioner: practitionerProfiles, inventoryLot: productInventoryLots }).from(consentRecords).innerJoin(consentTemplates, eq(consentRecords.templateId, consentTemplates.id)).innerJoin(products, eq(consentRecords.productId, products.id)).innerJoin(productSources, eq(consentRecords.sourceId, productSources.id)).leftJoin(practitionerProfiles, and(eq(practitionerProfiles.userId, consentRecords.practitionerUserId), eq(practitionerProfiles.clinicId, consentRecords.clinicId))).leftJoin(productInventoryLots, eq(consentRecords.inventoryLotId, productInventoryLots.id)).where(and(eq(consentRecords.id, input.recordId), eq(consentRecords.clinicId, workspace.clinic.id))).limit(1);
     const row = rows[0];
     if (!row || row.record.status !== "sent") throw new Error("Only a sent consent may be signed");
-    const disclosureRows = await db.select().from(disclosureBlocks).where(and(eq(disclosureBlocks.productId, row.product.id), eq(disclosureBlocks.sourceId, row.source.id), eq(disclosureBlocks.language, row.record.language)));
-    const applicable = disclosureRows.filter(d => d.scope === "product" || d.treatmentAreaKey === row.record.treatmentAreaKey);
+    const materialSelections = await db.select({ selection: consentMaterialSelections, product: products, source: productSources }).from(consentMaterialSelections).innerJoin(products, eq(consentMaterialSelections.productId, products.id)).innerJoin(productSources, eq(consentMaterialSelections.sourceId, productSources.id)).where(eq(consentMaterialSelections.consentRecordId, row.record.id)).orderBy(consentMaterialSelections.id);
+    const materialIdentities = materialSelections.length ? materialSelections.map(item => ({ productId: item.product.id, sourceId: item.source.id })) : [{ productId: row.product.id, sourceId: row.source.id }];
+    const disclosureGroups = await Promise.all(materialIdentities.map(material => db.select().from(disclosureBlocks).where(and(eq(disclosureBlocks.productId, material.productId), eq(disclosureBlocks.sourceId, material.sourceId), eq(disclosureBlocks.language, row.record.language)))));
+    const applicable = disclosureGroups.flat().filter(d => d.scope === "product" || d.treatmentAreaKey === row.record.treatmentAreaKey);
     const required = applicable.filter(d => d.requiredAcknowledgement);
     if (!hasAllRequiredAcknowledgements(required, input.acknowledgedDisclosureIds)) throw new Error("Every required product and treatment-area disclosure must be acknowledged before signing");
     const signedAt = new Date();
@@ -187,7 +212,7 @@ export const consentRouter = router({
     }
     const mapEntries = await db.select().from(treatmentMapEntries).where(eq(treatmentMapEntries.consentRecordId, row.record.id)).orderBy(treatmentMapEntries.createdAt);
     const signedTreatmentMap = bindTreatmentMapForSigning(mapEntries, buildTreatmentMapConsentContext(row.record, row.product, row.practitioner));
-    const { snapshot, snapshotHash } = buildSignedSnapshot({ record: row.record, template: { name: row.template.name, revision: row.template.revision, sections: row.template.sections }, product: row.product, source: row.source, inventoryLot: row.inventoryLot, practitioner: row.practitioner, clinic: workspace.clinic, disclosures: applicable, signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, treatmentMap: signedTreatmentMap });
+    const { snapshot, snapshotHash } = buildSignedSnapshot({ record: row.record, template: { name: row.template.name, revision: row.template.revision, sections: row.template.sections }, product: row.product, source: row.source, inventoryLot: row.inventoryLot, materials: materialSelections, practitioner: row.practitioner, clinic: workspace.clinic, disclosures: applicable, signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, treatmentMap: signedTreatmentMap });
     await db.transaction(async tx => {
       await tx.insert(consentAcknowledgements).values(required.map(d => ({ consentRecordId: row.record.id, disclosureBlockId: d.id, sectionKey: `disclosure-${d.id}`, sectionTitle: d.title, acknowledgedAt: signedAt })));
       await tx.update(consentRecords).set({ status: "signed", signerName: input.signerName, signingMethod: input.signingMethod, signatureUrl, signedAt, signedSnapshot: snapshot, snapshotHash }).where(and(eq(consentRecords.id, row.record.id), eq(consentRecords.status, "sent")));

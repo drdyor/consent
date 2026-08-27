@@ -22,7 +22,8 @@ describe("consent.sign treatment map integration", () => {
       select: vi.fn(() => {
         selectCall += 1;
         if (selectCall === 1) { const q: any = { from: () => q, innerJoin: () => q, leftJoin: () => q, where: () => q, limit: async () => [row] }; return q; }
-        if (selectCall === 2) { const q: any = { from: () => q, where: async () => [] }; return q; }
+        if (selectCall === 2) { const q: any = { from: () => q, innerJoin: () => q, where: () => ({ orderBy: async () => [] }) }; return q; }
+        if (selectCall === 3) { const q: any = { from: () => q, where: async () => [] }; return q; }
         const q: any = { from: () => q, where: () => ({ orderBy: async () => [mapEntry] }) }; return q;
       }),
       transaction: vi.fn(async (callback: (transaction: typeof tx) => Promise<void>) => callback(tx)),

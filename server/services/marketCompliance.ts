@@ -1,4 +1,4 @@
-export type ComplianceMarket = "pl_eu" | "uk_gb" | "usa";
+export type ComplianceMarket = "pl_eu" | "uk_gb" | "mt_malta" | "usa";
 
 type ClinicMarketProfile = {
   complianceMarket: ComplianceMarket;
@@ -6,6 +6,12 @@ type ClinicMarketProfile = {
   usStateAuthority?: string | null;
   usStateEvidenceUrl?: string | null;
   usStateEvidenceVerifiedAt?: Date | null;
+  maltaAuthorityEvidenceUrl?: string | null;
+  maltaEconomicOperatorName?: string | null;
+  maltaEconomicOperatorRole?: string | null;
+  maltaEconomicOperatorRegistration?: string | null;
+  maltaEconomicOperatorEvidenceUrl?: string | null;
+  maltaEvidenceVerifiedAt?: Date | null;
 };
 
 type SourceEvidence = {
@@ -28,6 +34,11 @@ type CatalogueEvidence = {
   ukResponsiblePersonStatus: "appointed" | "not_required" | "unresolved";
   ukResponsiblePersonEvidenceUrl?: string | null;
   ukEvidenceVerifiedAt?: Date | null;
+  maltaLocalMarketReference?: string | null;
+  maltaLocalMarketEvidenceUrl?: string | null;
+  maltaProductEconomicOperatorName?: string | null;
+  maltaProductEconomicOperatorEvidenceUrl?: string | null;
+  maltaEvidenceVerifiedAt?: Date | null;
   fdaMarketingAuthorizationType: "510k" | "de_novo" | "pma" | "hde" | "exempt" | "not_applicable" | "unresolved";
   fdaMarketingAuthorizationNumber?: string | null;
   fdaMarketingAuthorizationUrl?: string | null;
@@ -40,12 +51,13 @@ type CatalogueEvidence = {
 function normalized(value?: string | null) { return (value || "").trim().toUpperCase(); }
 function hasHttps(value?: string | null) { return Boolean(value?.startsWith("https://")); }
 
-export function marketJurisdictionLabel(market: ComplianceMarket) { return market === "pl_eu" ? "Poland/EU" : market === "uk_gb" ? "Great Britain" : "USA"; }
+export function marketJurisdictionLabel(market: ComplianceMarket) { return market === "pl_eu" ? "Poland/EU" : market === "uk_gb" ? "Great Britain" : market === "mt_malta" ? "Malta" : "USA"; }
 
 export function sourceMatchesMarket(sourceJurisdiction: string, market: ComplianceMarket) {
   const jurisdiction = normalized(sourceJurisdiction);
   if (market === "pl_eu") return jurisdiction === "PL" || jurisdiction === "EU";
   if (market === "uk_gb") return jurisdiction === "UK" || jurisdiction === "GB";
+  if (market === "mt_malta") return jurisdiction === "MT" || jurisdiction === "EU";
   return jurisdiction === "US" || jurisdiction === "USA";
 }
 
@@ -72,6 +84,15 @@ export function getMarketEvidenceGate(profile: ClinicMarketProfile, source: Sour
       if (catalogue.ukMarketRoute === "unresolved" || catalogue.ukMarketRoute === "not_applicable") return { eligible: false, code: "uk_route_missing", message: "Great Britain device use requires a documented UKCA or CE transitional route." } as const;
     }
     return { eligible: true, code: "ready", message: "Great Britain MHRA and market-route evidence is present." } as const;
+  }
+  if (market === "mt_malta") {
+    const clinicEvidenceReady = Boolean(profile.maltaEconomicOperatorName?.trim() && profile.maltaEconomicOperatorRole?.trim() && profile.maltaEconomicOperatorRegistration?.trim() && hasHttps(profile.maltaAuthorityEvidenceUrl) && hasHttps(profile.maltaEconomicOperatorEvidenceUrl) && profile.maltaEvidenceVerifiedAt);
+    if (!clinicEvidenceReady) return { eligible: false, code: "malta_clinic_evidence_missing", message: "Malta patient-ready use requires administrator-verified Malta Medicines Authority and economic-operator evidence on the clinic profile." } as const;
+    if (catalogue?.productClassification === "medical_device") {
+      const localMarketReady = Boolean(catalogue.maltaLocalMarketReference?.trim() && hasHttps(catalogue.maltaLocalMarketEvidenceUrl) && catalogue.maltaProductEconomicOperatorName?.trim() && hasHttps(catalogue.maltaProductEconomicOperatorEvidenceUrl) && catalogue.maltaEvidenceVerifiedAt);
+      if (!localMarketReady) return { eligible: false, code: "malta_device_evidence_missing", message: "Malta device use requires an administrator-verified local-market reference and product economic-operator evidence; Aegis does not infer notification, registration, exemption, or named-patient status." } as const;
+    }
+    return { eligible: true, code: "ready", message: "Malta clinic and device-market evidence is present." } as const;
   }
   const stateReady = Boolean(profile.usStateCode && profile.usStateAuthority && hasHttps(profile.usStateEvidenceUrl) && profile.usStateEvidenceVerifiedAt);
   if (!stateReady) return { eligible: false, code: "us_state_evidence_missing", message: "USA patient-ready use requires a selected state and administrator-verified official state-practice evidence." } as const;

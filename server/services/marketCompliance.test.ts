@@ -10,6 +10,8 @@ describe("market compliance evidence gates", () => {
     expect(sourceMatchesMarket("EU", "pl_eu")).toBe(true);
     expect(sourceMatchesMarket("UK", "pl_eu")).toBe(false);
     expect(sourceMatchesMarket("GB", "uk_gb")).toBe(true);
+    expect(sourceMatchesMarket("MT", "mt_malta")).toBe(true);
+    expect(sourceMatchesMarket("EU", "mt_malta")).toBe(true);
     expect(sourceMatchesMarket("US", "usa")).toBe(true);
   });
 
@@ -42,5 +44,13 @@ describe("market compliance evidence gates", () => {
   it("does not infer USA drug or biologic authorization from the FDA device evidence record", () => {
     const result = getMarketEvidenceGate({ complianceMarket: "usa", usStateCode: "TX", usStateAuthority: "Texas Medical Board", usStateEvidenceUrl: "https://example.test/texas", usStateEvidenceVerifiedAt: new Date() }, verifiedSource("US", "FDA"), { ...baseDevice, productClassification: "medicinal_product" as const });
     expect(result).toMatchObject({ eligible: false, code: "us_non_device_review_required" });
+  });
+
+  it("requires separate Malta clinic economic-operator and device local-market evidence", () => {
+    const source = verifiedSource("MT", "Malta Medicines Authority");
+    expect(getMarketEvidenceGate({ complianceMarket: "mt_malta" }, source, baseDevice)).toMatchObject({ eligible: false, code: "malta_clinic_evidence_missing" });
+    const clinic = { complianceMarket: "mt_malta" as const, maltaAuthorityEvidenceUrl: "https://example.test/malta-authority", maltaEconomicOperatorName: "Example distributor", maltaEconomicOperatorRole: "Distributor", maltaEconomicOperatorRegistration: "MDRP-100", maltaEconomicOperatorEvidenceUrl: "https://example.test/operator", maltaEvidenceVerifiedAt: new Date() };
+    expect(getMarketEvidenceGate(clinic, source, baseDevice)).toMatchObject({ eligible: false, code: "malta_device_evidence_missing" });
+    expect(getMarketEvidenceGate(clinic, source, { ...baseDevice, maltaLocalMarketReference: "MMA-DEVICE-100", maltaLocalMarketEvidenceUrl: "https://example.test/device", maltaProductEconomicOperatorName: "Example distributor", maltaProductEconomicOperatorEvidenceUrl: "https://example.test/product-operator", maltaEvidenceVerifiedAt: new Date() })).toMatchObject({ eligible: true, code: "ready" });
   });
 });
