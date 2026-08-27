@@ -11,7 +11,7 @@ import { buildTreatmentMapConsentContext } from "../../shared/treatmentMapContex
 import { getMarketEvidenceGate } from "../services/marketCompliance";
 import { buildWithdrawalEventHash, notarizeSnapshotHash, verifyNotarizedSnapshot } from "../services/consentNotary";
 import { createPatientSigningToken, decryptPatientValue, encryptPatientIdentity, hashPatientSigningToken } from "../services/patientIdentity";
-import { createHeartbeatJob } from "../_core/heartbeat";
+import { registerScheduledJob } from "../providers/scheduler";
 import { procedureOnlySnapshotSection } from "../../shared/procedureOnlyConsent";
 
 const consentInput = z.object({
@@ -176,7 +176,7 @@ export const consentRouter = router({
   }),
   activateDailyFreshnessSchedule: protectedProcedure.mutation(async ({ ctx }) => {
     const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable"); const existing = (await db.select().from(consentEvidenceFreshnessSettings).where(eq(consentEvidenceFreshnessSettings.clinicId, workspace.clinic.id)).limit(1))[0]; if (existing?.scheduleCronTaskUid) return { taskUid: existing.scheduleCronTaskUid, alreadyActive: true };
-    const job = await createHeartbeatJob({ name: `consent-evidence-freshness-clinic-${workspace.clinic.id}`, cron: "0 30 5 * * *", path: "/api/scheduled/consent-evidence-freshness", method: "POST", description: "Aegis Consent daily signed-consent evidence freshness recheck" }, ""); if (existing) await db.update(consentEvidenceFreshnessSettings).set({ scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id }).where(eq(consentEvidenceFreshnessSettings.id, existing.id)); else await db.insert(consentEvidenceFreshnessSettings).values({ clinicId: workspace.clinic.id, scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id }); return { taskUid: job.taskUid, nextExecutionAt: job.nextExecutionAt, alreadyActive: false };
+    const job = await registerScheduledJob({ name: `consent-evidence-freshness-clinic-${workspace.clinic.id}`, cron: "0 30 5 * * *", path: "/api/scheduled/consent-evidence-freshness", method: "POST", description: "Aegis Consent daily signed-consent evidence freshness recheck" }, ""); if (existing) await db.update(consentEvidenceFreshnessSettings).set({ scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id }).where(eq(consentEvidenceFreshnessSettings.id, existing.id)); else await db.insert(consentEvidenceFreshnessSettings).values({ clinicId: workspace.clinic.id, scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id }); return { taskUid: job.taskUid, nextExecutionAt: job.nextExecutionAt, alreadyActive: false };
   }),
   patientHistory: protectedProcedure.input(z.object({ patientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
     const workspace = await requireWorkspace(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");

@@ -1,7 +1,9 @@
 import "dotenv/config";
 import express from "express";
+import type { Request } from "express";
 import { createServer } from "http";
 import net from "net";
+import { timingSafeEqual } from "node:crypto";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerLocalAuthRoutes } from "../providers/localAuth";
@@ -10,7 +12,9 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { getScheduledJobsSecret } from "../providers/config";
+import { startInternalSchedulerIfConfigured } from "../providers/internalScheduler";
 import { consentEvidenceFreshnessSettings, supplierCorrectiveActionDocuments, supplierEscalationSettings, supplierEvidenceDocuments, supplierReminderSettings } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { requireAdmin } from "../services/workspace";
@@ -18,6 +22,22 @@ import { runEvidenceFreshnessRecheck } from "../routers/consents";
 import { recordSupplierDocumentScanVerdict, runCommercialDocumentScanFollowup, runEvidenceExpiryScan, runOverdueIncidentDeliveryScan } from "../routers/supplierOps";
 import { storageGetSignedUrl } from "../storage";
 import { canReleaseSupplierDocument } from "../services/supplierEscalation";
+
+// De-Manus scheduler seam: an EXTERNAL cron may authenticate to the
+// /api/scheduled/* endpoints with `Authorization: Bearer ${SCHEDULED_JOBS_SECRET}`
+// (constant-time compare) as an alternative to the Manus cron identity or the
+// in-process scheduler. Disabled unless the env var is set.
+function hasValidScheduledSecret(req: Request): boolean {
+  const secret = getScheduledJobsSecret();
+  if (!secret) return false;
+  const header = req.headers.authorization;
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
+  const provided = Buffer.from(header.slice(7));
+  const expected = Buffer.from(secret);
+  return (
+    provided.length === expected.length && timingSafeEqual(provided, expected)
+  );
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -84,6 +104,14 @@ async function startServer() {
   });
   app.post("/api/scheduled/supplier-evidence-expiry", async (req, res) => {
     try {
+      if (hasValidScheduledSecret(req)) {
+        const db = await getDb();
+        if (!db) return res.status(503).json({ error: "Database unavailable" });
+        const rows = await db.select().from(supplierReminderSettings).where(isNotNull(supplierReminderSettings.scheduleCronTaskUid));
+        const results = [];
+        for (const row of rows) results.push({ clinicId: row.clinicId, ...(await runEvidenceExpiryScan(row.clinicId)) });
+        return res.json({ ok: true, mode: "shared-secret", results });
+      }
       const user = await sdk.authenticateRequest(req);
       if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "Scheduled-task identity required" });
       const db = await getDb();
@@ -108,6 +136,14 @@ async function startServer() {
   });
   app.post("/api/scheduled/supplier-incident-escalations", async (req, res) => {
     try {
+      if (hasValidScheduledSecret(req)) {
+        const db = await getDb();
+        if (!db) return res.status(503).json({ error: "Database unavailable" });
+        const rows = await db.select().from(supplierEscalationSettings).where(isNotNull(supplierEscalationSettings.scheduleCronTaskUid));
+        const results = [];
+        for (const row of rows) results.push({ clinicId: row.clinicId, delivery: await runOverdueIncidentDeliveryScan(row.clinicId), scanFollowup: await runCommercialDocumentScanFollowup(row.clinicId) });
+        return res.json({ ok: true, mode: "shared-secret", results });
+      }
       const user = await sdk.authenticateRequest(req);
       if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "Scheduled-task identity required" });
       const db = await getDb(); if (!db) return res.status(503).json({ error: "Database unavailable" });
@@ -122,6 +158,14 @@ async function startServer() {
   });
   app.post("/api/scheduled/consent-evidence-freshness", async (req, res) => {
     try {
+      if (hasValidScheduledSecret(req)) {
+        const db = await getDb();
+        if (!db) return res.status(503).json({ error: "Database unavailable" });
+        const rows = await db.select().from(consentEvidenceFreshnessSettings).where(isNotNull(consentEvidenceFreshnessSettings.scheduleCronTaskUid));
+        const results = [];
+        for (const row of rows) results.push({ clinicId: row.clinicId, ...(await runEvidenceFreshnessRecheck(row.clinicId)) });
+        return res.json({ ok: true, mode: "shared-secret", results });
+      }
       const user = await sdk.authenticateRequest(req);
       if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "Scheduled-task identity required" });
       const db = await getDb(); if (!db) return res.status(503).json({ error: "Database unavailable" });
@@ -158,6 +202,9 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+
+  // De-Manus scheduler seam: in-process daily jobs when SCHEDULER_PROVIDER=internal.
+  startInternalSchedulerIfConfigured();
 }
 
 startServer().catch(console.error);

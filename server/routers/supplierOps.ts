@@ -4,7 +4,7 @@ import { auditEvents, marketCatalogueProducts, productInventoryLots, products, s
 import { getDb } from "../db";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { storageGetSignedUrl, storagePut } from "../storage";
-import { createHeartbeatJob } from "../_core/heartbeat";
+import { registerScheduledJob } from "../providers/scheduler";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
 import { assertSupplierIncidentClinicScope, calculateSupplierPerformance, filterClinicScopedSupplierRows, validateSupplierIncidentTransition } from "../services/supplierPerformance";
 import { assertCorrectiveActionAvailable, createSupplierResponseToken, hashSupplierResponseToken } from "../services/supplierCorrectiveActions";
@@ -48,7 +48,7 @@ export const supplierOpsRouter = router({
     const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
     const existing = (await db.select().from(supplierReminderSettings).where(eq(supplierReminderSettings.clinicId, workspace.clinic.id)).limit(1))[0];
     if (existing?.scheduleCronTaskUid) return { taskUid: existing.scheduleCronTaskUid, alreadyActive: true };
-    const job = await createHeartbeatJob({ name: `supplier-evidence-expiry-clinic-${workspace.clinic.id}`, cron: "0 0 5 * * *", path: "/api/scheduled/supplier-evidence-expiry", method: "POST", description: "Aegis Consent daily supplier evidence expiry scan" }, "");
+    const job = await registerScheduledJob({ name: `supplier-evidence-expiry-clinic-${workspace.clinic.id}`, cron: "0 0 5 * * *", path: "/api/scheduled/supplier-evidence-expiry", method: "POST", description: "Aegis Consent daily supplier evidence expiry scan" }, "");
     if (existing) await db.update(supplierReminderSettings).set({ scheduleCronTaskUid: job.taskUid }).where(eq(supplierReminderSettings.id, existing.id));
     else await db.insert(supplierReminderSettings).values({ clinicId: workspace.clinic.id, reminderDays: 60, externalDeliveryEnabled: false, deliveryChannel: "none", scheduleCronTaskUid: job.taskUid, createdByUserId: ctx.user.id });
     return { taskUid: job.taskUid, nextExecutionAt: job.nextExecutionAt, alreadyActive: false };
@@ -142,7 +142,7 @@ export const supplierOpsRouter = router({
     const workspace = await requireAdmin(ctx.user); const db = await getDb(); if (!db) throw new Error("Database unavailable");
     const existing = (await db.select().from(supplierEscalationSettings).where(eq(supplierEscalationSettings.clinicId, workspace.clinic.id)).limit(1))[0];
     if (existing?.scheduleCronTaskUid) return { taskUid: existing.scheduleCronTaskUid, alreadyActive: true };
-    const job = await createHeartbeatJob({ name: `supplier-incident-escalation-clinic-${workspace.clinic.id}`, cron: "0 15 5 * * *", path: "/api/scheduled/supplier-incident-escalations", method: "POST", description: "Aegis Consent daily overdue high-severity incident delivery" }, "");
+    const job = await registerScheduledJob({ name: `supplier-incident-escalation-clinic-${workspace.clinic.id}`, cron: "0 15 5 * * *", path: "/api/scheduled/supplier-incident-escalations", method: "POST", description: "Aegis Consent daily overdue high-severity incident delivery" }, "");
     if (existing) await db.update(supplierEscalationSettings).set({ scheduleCronTaskUid: job.taskUid }).where(eq(supplierEscalationSettings.id, existing.id)); else await db.insert(supplierEscalationSettings).values({ clinicId: workspace.clinic.id, automatedDeliveryEnabled: false, managedEmailEnabled: false, managedEmailProvider: "none", retryLimit: 3, scheduleCronTaskUid: job.taskUid, updatedByUserId: ctx.user.id });
     return { taskUid: job.taskUid, nextExecutionAt: job.nextExecutionAt, alreadyActive: false };
   }),
