@@ -50,9 +50,15 @@ below are DISJOINT from that scope unless marked.
 
 - [ ] **D1 — expired-lot blocking must treat NULL expiry as "procedure-only, no check"**
   (branch `oss-adoption-2026-08-28` makes product/lot optional per template).
-- [ ] **D2 — branch `oss-adoption-2026-08-28` exists** (7 commits: procedure-only consent,
-  starter library, FDI tooth keys, medical_device category, +11 tests). Merge-coordinate;
-  only overlap is a display-only leftJoin in `workspace.ts` recent-records.
+- [ ] **D2 — branch `oss-adoption-2026-08-28` exists** (procedure-only consent, starter
+  library, FDI tooth keys, medical_device category, +11 tests; PLUS de-Manus provider seams
+  in progress — env-gated AUTH/STORAGE/SCHEDULER providers, Manus stays default). Merge-
+  coordinate; only overlap is a display-only leftJoin in `workspace.ts` recent-records.
+- [ ] **D3 — two further operator branches exist, both based on D2's tip:**
+  `surveyjs-forms-2026-08-28` (opt-in SurveyJS render engine per template, default off,
+  snapshot pipeline untouched) and `shop-foundation-2026-08-28` (WINDOW_S1 seller catalog +
+  purchase-in + batch/expiry on the EXISTING supplier/PO/lot tables). If your remediation
+  collides with either area, note it and finish your scope — reconciliation is operator-side.
 
 ## Standing rule (Eva, 2026-08-28)
 **No scoring or comparative claims without reading the code.**
