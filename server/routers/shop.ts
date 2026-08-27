@@ -24,7 +24,7 @@ const sourceForMarketGate = (source: typeof productSources.$inferSelect, product
   registryVerifiedAt: source.registryVerifiedAt || (product.registryStatus === "verified" ? new Date() : null),
 });
 
-async function loadSellableContext(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, clinic: any, lotId: number) {
+export async function loadSellableContext(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, clinic: any, lotId: number) {
   const lot = (await db.select().from(productInventoryLots).where(and(eq(productInventoryLots.id, lotId), eq(productInventoryLots.clinicId, clinic.id))).limit(1))[0];
   if (!lot) throw new Error("Clinic inventory lot not found");
   const row = (await db.select({ product: products, source: productSources }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id)).where(eq(products.id, lot.productId)).limit(1))[0];
