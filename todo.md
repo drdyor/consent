@@ -151,11 +151,11 @@
 - [x] Support both disabled-by-default signed webhook delivery and optional managed-email delivery for overdue high-severity incidents.
 - [x] Support both clinic-configured quarantine scan callbacks and optional commercial malware-scanning adapter configuration without storing provider credentials in application records.
 - [x] Add delivery and scanning configuration status, retry/attempt audit, and safe fallback states that never expose an unscanned or unsafe document.
-- [ ] Execute the drdyor/consent directive queue from WINDOW_C1 in order and pause for a user decision at WINDOW_C4 before any de-Manus work.
+- [x] Execute the drdyor/consent directive queue from WINDOW_C1 in order and pause for a user decision at WINDOW_C4 before any de-Manus work.
 - [x] Inspect the user’s newer changes and refresh every recovery bundle, checksum, remote verification, and managed-project checkpoint to include them.
-- [ ] Confirm the standalone Aegis direction, audit United Kingdom, Malta, and Poland coverage, assess aesthetic product-catalogue gaps, and determine whether a governed shop exists or requires a separate build.
-- [ ] Define a phased, market-aware dental and implant-consent expansion that covers informed-consent evidence, patient risk intake, dental device traceability, and surgical documentation without introducing unsupported diagnostic or treatment-planning claims.
-- [ ] Define a click-to-assemble workflow where clinicians select a pre-generated aesthetic or dental procedure form, select the actual products or materials used, and review jurisdiction-aware governed disclosures before signing.
-- [ ] Define a shared consent-engine core with separate dental/implant and aesthetic clinical modules, retaining independent jurisdiction, licensing, audit, procedure, product, material, and anatomy contexts.
-- [ ] Define Aegis as the standalone Operations Hub for consent, stock, procurement, and future supply search, with dental, aesthetics, and MD clinical applications using a native consent experience backed by Aegis APIs and immutable audit records.
+- [x] Confirm the standalone Aegis direction, audit United Kingdom, Malta, and Poland coverage, assess aesthetic product-catalogue gaps, and determine whether a governed shop exists or requires a separate build.
+- [x] Define a phased, market-aware dental and implant-consent expansion that covers informed-consent evidence, patient risk intake, dental device traceability, and surgical documentation without introducing unsupported diagnostic or treatment-planning claims.
+- [x] Define a click-to-assemble workflow where clinicians select a pre-generated aesthetic or dental procedure form, select the actual products or materials used, and review jurisdiction-aware governed disclosures before signing.
+- [x] Define a shared consent-engine core with separate dental/implant and aesthetic clinical modules, retaining independent jurisdiction, licensing, audit, procedure, product, material, and anatomy contexts.
+- [x] Define Aegis as the standalone Operations Hub for consent, stock, procurement, and future supply search, with dental, aesthetics, and MD clinical applications using a native consent experience backed by Aegis APIs and immutable audit records.
 - [x] Commit and push the Aegis architecture handover, then provide a verified portable sandbox package and runtime handoff that enables future development without reliance on this session.
