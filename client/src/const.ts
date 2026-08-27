@@ -13,6 +13,30 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 // with "invalid oauth state". It returns void by design, so there is no URL to
 // stash across renders.
 export const startLogin = () => {
+  // De-Manus auth seam: ask the server which login flow applies. When the
+  // operator runs AUTH_PROVIDER=local, route to the built-in /login page;
+  // otherwise (default, or if the probe fails) keep the Manus OAuth portal
+  // flow exactly as before.
+  void (async () => {
+    try {
+      const resp = await fetch("/api/auth/provider");
+      if (resp.ok) {
+        const { provider } = (await resp.json()) as { provider?: string };
+        if (provider === "local") {
+          if (window.location.pathname !== "/login") {
+            window.location.href = "/login";
+          }
+          return;
+        }
+      }
+    } catch {
+      // Provider probe unavailable — fall through to the Manus portal.
+    }
+    startManusLogin();
+  })();
+};
+
+const startManusLogin = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
