@@ -196,3 +196,12 @@
 - [x] Conduct a documented four-persona Aegis usability review covering clinician consent assembly, clinic administration/source governance, supplier operations, and clinical-app integration operations.
 - [x] Record evidence-backed working, blocked, confusing, and intentionally unavailable workflows with actionable prioritised findings.
 - [x] Create and validate a reusable skill for role-based regulated-workflow usability review, including safe evidence collection, capability classification, and preservation/handover checks.
+- [x] Add a clinician-printable, hash-bound paper-consent package and an append-only witnessed physical-signature record that never modifies a sealed electronic consent.
+- [x] Add reviewer work queues for incomplete, changes-requested, and assigned clinical/legal/source-rights resource review work, with clear responsibility and completion state.
+- [x] Add a role-aware clinic setup checklist for new practitioners and administrators, covering profile, sources/templates, inventory, reviewer governance, and optional information-link review.
+- [x] Add regression coverage for paper package integrity, append-only physical-signature provenance, reviewer queue scoping, and setup-checklist progress; verify desktop and mobile views.
+- [x] Inspect the selected decision-ledger repository pattern and define an Aegis AI-governance model that records AI-assisted inputs, outputs, provider/model metadata, human approval, and immutable audit events without storing provider secrets in the database.
+- [x] Add default-off, per-user AI preferences and a provider-neutral configuration model that distinguishes local, clinic-controlled, and approved cloud adapters without invoking a model or enabling clinical decision support.
+- [x] Add a clinician-facing AI governance/audit workspace and AI Act scope notice that explains intended use, human oversight, prohibited uses, data/provider boundaries, and review evidence without asserting legal compliance.
+- [x] Add tests for tenant scope, user opt-out, immutable AI decision events, prohibited-action guards, and AI configuration status; validate the expanded paper, reviewer, and onboarding flows together.
+- [x] Locate and assess the referenced Amazon AI Act material as a vendor reference only, record its provenance, and reconcile any control claims against official sources before including it in Aegis clinician-facing documentation.

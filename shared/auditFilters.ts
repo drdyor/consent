@@ -5,7 +5,7 @@ export type AuditFilterState = {
   procedure: string;
   product: string;
   practitioner: string;
-  status: "draft" | "sent" | "signed" | "voided" | "";
+  status: "draft" | "sent" | "paper_prepared" | "signed" | "paper_signed" | "voided" | "";
   dateFrom: string;
   dateTo: string;
 };

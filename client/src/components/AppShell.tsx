@@ -15,6 +15,7 @@ import {
   Menu,
   Settings,
   ShieldCheck,
+  BrainCircuit,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -26,6 +27,7 @@ const navigation = [
   { label: "Templates & sources", href: "/templates", icon: BookOpenCheck, adminOnly: true },
   { label: "EU product catalogue", href: "/catalogue", icon: LibraryBig, adminOnly: true },
   { label: "Review governance", href: "/education-governance", icon: Scale, adminOnly: true },
+  { label: "AI governance", href: "/ai-governance", icon: BrainCircuit },
   { label: "Supplier governance", href: "/supply-governance", icon: PackageCheck, adminOnly: true },
   { label: "Records", href: "/records", icon: FileText },
 ];

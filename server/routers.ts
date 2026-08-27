@@ -9,6 +9,7 @@ import { workspaceRouter } from "./routers/workspace";
 import { supplierOpsRouter } from "./routers/supplierOps";
 import { clinicIntegrationRouter } from "./routers/clinicIntegration";
 import { educationGovernanceRouter } from "./routers/educationGovernance";
+import { aiGovernanceRouter } from "./routers/aiGovernance";
 
 export const appRouter = router({
   system: systemRouter,
@@ -27,6 +28,7 @@ export const appRouter = router({
   supplierOps: supplierOpsRouter,
   clinicIntegration: clinicIntegrationRouter,
   educationGovernance: educationGovernanceRouter,
+  aiGovernance: aiGovernanceRouter,
 });
 
 export type AppRouter = typeof appRouter;

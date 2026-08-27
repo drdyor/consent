@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveResourceReviewStatus, isHttpsLinkOnlyResourceUrl } from "./educationGovernance";
+import { buildReviewQueues, deriveResourceReviewStatus, isHttpsLinkOnlyResourceUrl } from "./educationGovernance";
 
 describe("education governance review status", () => {
   const required = ["clinical", "legal", "source_rights"] as const;
@@ -37,5 +37,12 @@ describe("link-only resource URL validation", () => {
     expect(isHttpsLinkOnlyResourceUrl("https://www.nice.org.uk/guidance")).toBe(true);
     expect(isHttpsLinkOnlyResourceUrl("http://www.nice.org.uk/guidance")).toBe(false);
     expect(isHttpsLinkOnlyResourceUrl("javascript:alert(1)")).toBe(false);
+  });
+});
+
+describe("reviewer queues", () => {
+  it("returns only current-clinic assigned work and treats a current-revision decision as complete", () => {
+    const queues = buildReviewQueues({ clinicId: 4, currentUserId: 10, resources: [{ id: 1, clinicId: 4, title: "Current clinic resource", revision: 2, reviewStatus: "under_review", requiredReviewerRoles: ["clinical", "legal"] }, { id: 2, clinicId: 9, title: "Other clinic resource", revision: 1, reviewStatus: "changes_requested", requiredReviewerRoles: ["clinical"] }], reviewers: [{ clinicId: 4, reviewerUserId: 10, reviewerRole: "clinical", isActive: true }, { clinicId: 9, reviewerUserId: 10, reviewerRole: "legal", isActive: true }], reviews: [{ clinicId: 4, educationResourceId: 1, resourceRevision: 2, reviewerRole: "clinical", createdAt: new Date("2026-08-27T10:00:00Z") }] });
+    expect(queues.myPending).toEqual([]); expect(queues.changesRequested).toEqual([]); expect(queues.unstaffedRequirements).toEqual([{ resource: expect.objectContaining({ id: 1 }), reviewerRole: "legal" }]);
   });
 });

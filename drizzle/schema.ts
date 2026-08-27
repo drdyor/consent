@@ -1,6 +1,7 @@
 import {
   boolean,
   decimal,
+  foreignKey,
   index,
   int,
   json,
@@ -282,7 +283,7 @@ export const consentRecords = mysqlTable("consentRecords", {
   patientEmail: varchar("patientEmail", { length: 320 }),
   lotNumber: varchar("lotNumber", { length: 128 }).notNull(),
   expiryDate: timestamp("expiryDate").notNull(),
-  status: mysqlEnum("status", ["draft", "sent", "signed", "voided"]).default("draft").notNull(),
+  status: mysqlEnum("status", ["draft", "sent", "paper_prepared", "signed", "paper_signed", "voided"]).default("draft").notNull(),
   signingMethod: mysqlEnum("signingMethod", ["typed", "drawn"]),
   signerName: varchar("signerName", { length: 255 }),
   signatureUrl: text("signatureUrl"),
@@ -721,6 +722,96 @@ export const consentEducationResourceAttachments = mysqlTable("consentEducationR
 }, table => [
   uniqueIndex("consent_resource_attachment_unique").on(table.consentRecordId, table.educationResourceId),
   index("consent_resource_attachment_consent_idx").on(table.consentRecordId, table.attachedAt),
+]);
+
+export const aiUserPreferences = mysqlTable("aiUserPreferences", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  userId: int("userId").notNull().references(() => users.id),
+  isEnabled: boolean("isEnabled").default(false).notNull(),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("ai_preference_clinic_user_unique").on(table.clinicId, table.userId),
+  index("ai_preference_user_idx").on(table.userId, table.isEnabled),
+]);
+
+export const aiProviderConfigurations = mysqlTable("aiProviderConfigurations", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  providerKind: mysqlEnum("providerKind", ["local_openai_compatible", "clinic_managed_endpoint", "approved_cloud"]).notNull(),
+  displayName: varchar("displayName", { length: 160 }).notNull(),
+  modelIdentifier: varchar("modelIdentifier", { length: 160 }),
+  serverSecretReference: varchar("serverSecretReference", { length: 120 }),
+  dataRegion: varchar("dataRegion", { length: 120 }),
+  documentationUrl: text("documentationUrl"),
+  status: mysqlEnum("status", ["draft", "approved", "disabled"]).default("disabled").notNull(),
+  approvedByUserId: int("approvedByUserId").references(() => users.id),
+  approvedAt: timestamp("approvedAt"),
+  createdByUserId: int("createdByUserId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("ai_provider_clinic_status_idx").on(table.clinicId, table.status),
+]);
+
+export const aiDecisionEvents = mysqlTable("aiDecisionEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  actorUserId: int("actorUserId").notNull().references(() => users.id),
+  parentEventId: int("parentEventId"),
+  providerConfigurationId: int("providerConfigurationId").references(() => aiProviderConfigurations.id),
+  eventReference: varchar("eventReference", { length: 80 }).notNull(),
+  eventKind: mysqlEnum("eventKind", ["assistance_recorded", "human_review"]).notNull(),
+  purpose: mysqlEnum("purpose", ["administrative_draft", "source_governance_draft", "procurement_suggestion", "other_nonclinical"]).notNull(),
+  modelIdentifier: varchar("modelIdentifier", { length: 160 }),
+  inputHash: varchar("inputHash", { length: 64 }).notNull(),
+  outputHash: varchar("outputHash", { length: 64 }).notNull(),
+  humanDecision: mysqlEnum("humanDecision", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  decisionNote: varchar("decisionNote", { length: 500 }),
+  previousHash: varchar("previousHash", { length: 64 }).notNull(),
+  entryHash: varchar("entryHash", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  foreignKey({ columns: [table.parentEventId], foreignColumns: [table.id], name: "aide_parent_fk" }),
+  uniqueIndex("ai_decision_reference_unique").on(table.eventReference),
+  index("ai_decision_clinic_idx").on(table.clinicId, table.createdAt),
+  index("ai_decision_parent_idx").on(table.parentEventId),
+]);
+
+export const paperConsentPackages = mysqlTable("paperConsentPackages", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  packageReference: varchar("packageReference", { length: 80 }).notNull(),
+  packageVersion: varchar("packageVersion", { length: 24 }).default("paper-consent-v1").notNull(),
+  packageSnapshot: json("packageSnapshot").notNull(),
+  packageHash: varchar("packageHash", { length: 64 }).notNull(),
+  preparedByUserId: int("preparedByUserId").notNull().references(() => users.id),
+  preparedAt: timestamp("preparedAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("paper_consent_record_unique").on(table.consentRecordId),
+  uniqueIndex("paper_consent_reference_unique").on(table.packageReference),
+  index("paper_consent_clinic_prepared_idx").on(table.clinicId, table.preparedAt),
+]);
+
+export const paperConsentWitnessEvents = mysqlTable("paperConsentWitnessEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  clinicId: int("clinicId").notNull().references(() => clinics.id),
+  consentRecordId: int("consentRecordId").notNull().references(() => consentRecords.id),
+  paperConsentPackageId: int("paperConsentPackageId").notNull().references(() => paperConsentPackages.id),
+  packageHash: varchar("packageHash", { length: 64 }).notNull(),
+  signerName: varchar("signerName", { length: 255 }).notNull(),
+  signedAt: timestamp("signedAt").notNull(),
+  witnessName: varchar("witnessName", { length: 255 }).notNull(),
+  witnessRole: varchar("witnessRole", { length: 160 }).notNull(),
+  attestation: text("attestation").notNull(),
+  recordedByUserId: int("recordedByUserId").notNull().references(() => users.id),
+  recordedAt: timestamp("recordedAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("paper_witness_package_unique").on(table.paperConsentPackageId),
+  index("paper_witness_consent_idx").on(table.consentRecordId, table.recordedAt),
+  index("paper_witness_clinic_idx").on(table.clinicId, table.recordedAt),
 ]);
 
 export type User = typeof users.$inferSelect;

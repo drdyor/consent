@@ -1,10 +1,11 @@
 import { and, count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { consentRecords, consentTemplates, clinics, practitionerProfiles, products } from "../../drizzle/schema";
+import { clinics, consentRecords, consentTemplates, educationResources, governanceReviewers, practitionerProfiles, productInventoryLots, productSources, products } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { storagePut } from "../storage";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
+import { buildSetupChecklist } from "../services/setupChecklist";
 
 const optionalHttpsUrl = z.string().url().refine(value => value.startsWith("https://"), "Evidence URL must use HTTPS").optional().nullable();
 
@@ -13,13 +14,19 @@ export const workspaceRouter = router({
     const workspace = await requireWorkspace(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
-    const [sent, signed, templates, recent] = await Promise.all([
+    const [sent, signed, templates, recent, clinicProducts, inventoryLots, activeReviewers, approvedResources] = await Promise.all([
       db.select({ value: count() }).from(consentRecords).where(and(eq(consentRecords.clinicId, workspace.clinic.id), eq(consentRecords.status, "sent"))),
       db.select({ value: count() }).from(consentRecords).where(and(eq(consentRecords.clinicId, workspace.clinic.id), eq(consentRecords.status, "signed"))),
       db.select({ value: count() }).from(consentTemplates).where(eq(consentTemplates.status, "active")),
       db.select({ record: consentRecords, product: products }).from(consentRecords).innerJoin(products, eq(consentRecords.productId, products.id)).where(eq(consentRecords.clinicId, workspace.clinic.id)).orderBy(desc(consentRecords.createdAt)).limit(5),
+      db.select({ value: count() }).from(products).innerJoin(productSources, eq(products.sourceId, productSources.id)).where(eq(productSources.reviewStatus, "approved")),
+      db.select({ value: count() }).from(productInventoryLots).where(eq(productInventoryLots.clinicId, workspace.clinic.id)),
+      db.select({ value: count() }).from(governanceReviewers).where(and(eq(governanceReviewers.clinicId, workspace.clinic.id), eq(governanceReviewers.isActive, true))),
+      db.select({ value: count() }).from(educationResources).where(and(eq(educationResources.clinicId, workspace.clinic.id), eq(educationResources.reviewStatus, "approved_reference_only"))),
     ]);
-    return { clinic: workspace.clinic, membership: workspace.membership, profile: workspace.profile, metrics: { sent: sent[0]?.value || 0, signed: signed[0]?.value || 0, templates: templates[0]?.value || 0 }, recent };
+    const isAdmin = workspace.membership.role === "admin";
+    const setupChecklist = buildSetupChecklist({ clinicName: workspace.clinic.name, jurisdiction: workspace.clinic.jurisdiction, practitionerName: workspace.profile?.displayName, approvedSources: Number(clinicProducts[0]?.value || 0), activeTemplates: Number(templates[0]?.value || 0), inventoryLots: Number(inventoryLots[0]?.value || 0), activeReviewers: Number(activeReviewers[0]?.value || 0), approvedResources: Number(approvedResources[0]?.value || 0) });
+    return { clinic: workspace.clinic, membership: workspace.membership, profile: workspace.profile, metrics: { sent: sent[0]?.value || 0, signed: signed[0]?.value || 0, templates: templates[0]?.value || 0 }, recent, setupChecklist, isAdmin };
   }),
   updateClinic: protectedProcedure.input(z.object({
     name: z.string().min(2).max(160), logoUrl: z.string().url().optional().nullable(), addressLine: z.string().max(500).optional().nullable(), contactEmail: z.string().email().optional().nullable(), contactPhone: z.string().max(64).optional().nullable(),
