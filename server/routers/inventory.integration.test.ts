@@ -33,7 +33,7 @@ describe("consent inventory lots", () => {
     state.db = {
       select: vi.fn(() => {
         selectCall += 1;
-        const rows = selectCall === 1 ? [productRow] : selectCall === 2 ? [selectedLot] : [{ id: 5, revision: 2, jurisdiction: "PL", language: "pl" }];
+        const rows = selectCall === 1 ? [{ id: 5, revision: 2, jurisdiction: "PL", language: "pl", status: "active", requiresProduct: true }] : selectCall === 2 ? [productRow] : selectCall === 3 ? [selectedLot] : [{ id: 9 }];
         const query: any = { from: () => query, innerJoin: () => query, where: () => query, limit: async () => rows };
         return query;
       }),
@@ -49,7 +49,7 @@ describe("consent inventory lots", () => {
     state.db = {
       select: vi.fn(() => {
         selectCall += 1;
-        const rows = selectCall === 1 ? [productRow] : [{ id: 5, revision: 2, jurisdiction: "PL", language: "en" }];
+        const rows = selectCall === 1 ? [{ id: 5, revision: 2, jurisdiction: "PL", language: "en", status: "active", requiresProduct: true }] : [productRow];
         const query: any = { from: () => query, innerJoin: () => query, where: () => query, limit: async () => rows };
         return query;
       }),
