@@ -15,7 +15,7 @@ export const workspaceRouter = router({
       db.select({ value: count() }).from(consentRecords).where(and(eq(consentRecords.clinicId, workspace.clinic.id), eq(consentRecords.status, "sent"))),
       db.select({ value: count() }).from(consentRecords).where(and(eq(consentRecords.clinicId, workspace.clinic.id), eq(consentRecords.status, "signed"))),
       db.select({ value: count() }).from(consentTemplates).where(eq(consentTemplates.status, "active")),
-      db.select({ record: consentRecords, product: products }).from(consentRecords).innerJoin(products, eq(consentRecords.productId, products.id)).where(eq(consentRecords.clinicId, workspace.clinic.id)).orderBy(desc(consentRecords.createdAt)).limit(5),
+      db.select({ record: consentRecords, product: products }).from(consentRecords).leftJoin(products, eq(consentRecords.productId, products.id)).where(eq(consentRecords.clinicId, workspace.clinic.id)).orderBy(desc(consentRecords.createdAt)).limit(5),
     ]);
     return {
       clinic: workspace.clinic,

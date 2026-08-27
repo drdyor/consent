@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
 import { getMarketEvidenceGate } from "../services/marketCompliance";
+import { findStarterTemplate, starterTemplateLibrary, STARTER_REVIEW_NOTICE } from "../../shared/starterTemplateLibrary";
 
 const templateSections = z.array(z.object({ id: z.string(), title: z.string().min(1), body: z.string().min(1), required: z.boolean() }));
 const sourceDisclosure = z.object({ scope: z.enum(["product", "area"]), treatmentAreaKey: z.string().max(64).optional(), kind: z.enum(["contraindication", "warning", "precaution", "adverse_event"]), title: z.string().min(2).max(255), body: z.string().min(2).max(16000), requiredAcknowledgement: z.boolean().default(true) });
@@ -15,14 +16,43 @@ export const catalogRouter = router({
     const workspace = await requireWorkspace(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
-    return db.select().from(consentTemplates).where(and(eq(consentTemplates.status, "active"), or(eq(consentTemplates.clinicId, workspace.clinic.id), eq(consentTemplates.isStarterTemplate, true))));
+    return db.select().from(consentTemplates).where(or(eq(consentTemplates.clinicId, workspace.clinic.id), and(eq(consentTemplates.status, "active"), eq(consentTemplates.isStarterTemplate, true))));
   }),
-  createTemplate: protectedProcedure.input(z.object({ name: z.string().min(3).max(160), procedureKey: z.string().min(3).max(100), description: z.string().max(1000).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), sections: templateSections })).mutation(async ({ ctx, input }) => {
+  createTemplate: protectedProcedure.input(z.object({ name: z.string().min(3).max(160), procedureKey: z.string().min(3).max(100), description: z.string().max(1000).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), requiresProduct: z.boolean().default(true), sections: templateSections })).mutation(async ({ ctx, input }) => {
     const workspace = await requireAdmin(ctx.user);
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
-    const result = await db.insert(consentTemplates).values({ clinicId: workspace.clinic.id, createdByUserId: ctx.user.id, name: input.name, procedureKey: input.procedureKey, description: input.description, jurisdiction: input.jurisdiction, language: input.language, sections: input.sections, status: "active" }).$returningId();
+    const result = await db.insert(consentTemplates).values({ clinicId: workspace.clinic.id, createdByUserId: ctx.user.id, name: input.name, procedureKey: input.procedureKey, description: input.description, jurisdiction: input.jurisdiction, language: input.language, requiresProduct: input.requiresProduct, sections: input.sections, status: "active" }).$returningId();
     return { id: result[0]?.id };
+  }),
+  templateLibrary: protectedProcedure.query(async ({ ctx }) => {
+    await requireWorkspace(ctx.user);
+    return { reviewNotice: STARTER_REVIEW_NOTICE, entries: starterTemplateLibrary.map(entry => ({ libraryKey: entry.libraryKey, name: entry.name, procedureKey: entry.procedureKey, description: entry.description, requiresProduct: entry.requiresProduct, language: entry.language, sectionCount: entry.sections.length })) };
+  }),
+  importTemplateFromLibrary: protectedProcedure.input(z.object({ libraryKey: z.string().min(3).max(100) })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const entry = findStarterTemplate(input.libraryKey);
+    if (!entry) throw new Error("Starter template not found in the library");
+    const existing = await db.select({ id: consentTemplates.id }).from(consentTemplates).where(and(eq(consentTemplates.clinicId, workspace.clinic.id), eq(consentTemplates.libraryKey, entry.libraryKey))).limit(1);
+    if (existing[0]) throw new Error("This starter template is already in the clinic library. Review and activate the existing copy");
+    const result = await db.insert(consentTemplates).values({ clinicId: workspace.clinic.id, createdByUserId: ctx.user.id, libraryKey: entry.libraryKey, name: entry.name, procedureKey: entry.procedureKey, description: `${STARTER_REVIEW_NOTICE} ${entry.description}`, jurisdiction: workspace.clinic.jurisdiction || "PL", language: entry.language, requiresProduct: entry.requiresProduct, sections: entry.sections, status: "draft" }).$returningId();
+    const id = result[0]?.id;
+    if (!id) throw new Error("Unable to import the starter template");
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "template.imported_from_library", entityType: "consentTemplate", entityId: String(id), summary: `Starter template "${entry.name}" imported as a draft for practitioner review` });
+    return { id, status: "draft" as const };
+  }),
+  activateTemplate: protectedProcedure.input(z.object({ templateId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const workspace = await requireAdmin(ctx.user);
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const template = (await db.select().from(consentTemplates).where(and(eq(consentTemplates.id, input.templateId), eq(consentTemplates.clinicId, workspace.clinic.id))).limit(1))[0];
+    if (!template) throw new Error("Consent template not found in this clinic");
+    if (template.status === "active") return { success: true, alreadyActive: true };
+    await db.update(consentTemplates).set({ status: "active" }).where(eq(consentTemplates.id, template.id));
+    await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: "template.activated", entityType: "consentTemplate", entityId: String(template.id), summary: `Template "${template.name}" reviewed and activated by a clinic administrator` });
+    return { success: true, alreadyActive: false };
   }),
   sources: protectedProcedure.query(async ({ ctx }) => {
     await requireWorkspace(ctx.user);
@@ -96,7 +126,7 @@ export const catalogRouter = router({
     await db.insert(auditEvents).values({ clinicId: workspace.clinic.id, actorUserId: ctx.user.id, action: `catalogue.${input.market}_evidence_verified`, entityType: "marketCatalogueProduct", entityId: String(catalogue.id), summary: `${input.market === "uk_gb" ? "Great Britain MHRA/UKCA" : "USA FDA"} evidence recorded for ${catalogue.brandName}` }); return { success: true, verifiedAt };
   }),
   createProductSource: protectedProcedure.input(z.object({
-    productName: z.string().min(2).max(160), manufacturer: z.string().min(2).max(160), category: z.enum(["neuromodulator", "ha_filler", "biostimulator", "other"]), activeIngredient: z.string().max(255).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), registryAuthority: z.string().max(160).optional(), registryIdentifier: z.string().max(160).optional(), documentTitle: z.string().min(3).max(255), documentUrl: z.string().url().refine(url => url.startsWith("https://"), "Canonical document URL must use HTTPS"), documentVersion: z.string().min(2).max(100), documentKind: z.enum(["spc", "ifu", "pi", "dfu"]), disclosures: z.array(sourceDisclosure).min(1),
+    productName: z.string().min(2).max(160), manufacturer: z.string().min(2).max(160), category: z.enum(["neuromodulator", "ha_filler", "biostimulator", "medical_device", "other"]), activeIngredient: z.string().max(255).optional(), jurisdiction: z.string().min(2).max(32).default("PL"), language: z.enum(["pl", "en"]).default("pl"), registryAuthority: z.string().max(160).optional(), registryIdentifier: z.string().max(160).optional(), documentTitle: z.string().min(3).max(255), documentUrl: z.string().url().refine(url => url.startsWith("https://"), "Canonical document URL must use HTTPS"), documentVersion: z.string().min(2).max(100), documentKind: z.enum(["spc", "ifu", "pi", "dfu"]), disclosures: z.array(sourceDisclosure).min(1),
   })).mutation(async ({ ctx, input }) => {
     await requireAdmin(ctx.user);
     const db = await getDb();

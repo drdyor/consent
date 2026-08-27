@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { requireAdmin, requireWorkspace } from "../services/workspace";
 
-const catalogueFilter = z.object({ category: z.enum(["all", "neuromodulator", "ha_filler", "biostimulator", "polynucleotide", "lipolysis", "other"]).default("all"), researchStatus: z.enum(["all", "research", "needs_evidence", "curation_ready", "restricted"]).default("all") });
+const catalogueFilter = z.object({ category: z.enum(["all", "neuromodulator", "ha_filler", "biostimulator", "polynucleotide", "lipolysis", "medical_device", "other"]).default("all"), researchStatus: z.enum(["all", "research", "needs_evidence", "curation_ready", "restricted"]).default("all") });
 const supplierEvidence = z.object({
   catalogueProductId: z.number().int().positive(),
   authorisedDistributorName: z.string().min(2).max(200),
