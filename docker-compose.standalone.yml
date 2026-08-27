@@ -1,0 +1,54 @@
+# Aegis Consent — standalone (ZERO Manus platform services)
+# WINDOW_C4 Stage 3 runnable proof: MySQL 8 + MinIO (S3-compatible).
+# Usage: docker compose -f docker-compose.standalone.yml up -d
+# Full walkthrough: docs/STANDALONE_RUNBOOK.md
+#
+# Host ports are prefixed to avoid clashing with dev defaults:
+#   MySQL  -> 127.0.0.1:33114
+#   MinIO  -> 127.0.0.1:9100 (S3 API), 127.0.0.1:9101 (console)
+# Credentials below are LOCAL-ONLY defaults for a laptop/lab run. Change them
+# for anything reachable from a network.
+
+services:
+  mysql:
+    image: mysql:8
+    container_name: aegis-standalone-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: aegis-local
+      MYSQL_DATABASE: aegis
+    ports:
+      - "127.0.0.1:33114:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-paegis-local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: aegis-standalone-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aegis-access
+      MINIO_ROOT_PASSWORD: aegis-secret-key
+    ports:
+      - "127.0.0.1:9100:9000"
+      - "127.0.0.1:9101:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: create the bucket the app uploads into (S3_BUCKET=aegis).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 aegis-access aegis-secret-key &&
+      mc mb --ignore-existing local/aegis &&
+      echo 'bucket aegis ready'
+      "
